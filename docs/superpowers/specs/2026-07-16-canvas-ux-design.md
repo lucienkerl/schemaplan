@@ -130,7 +130,9 @@ Undo-fähig sein noch beim Laden zurückgeschrieben.
 **Abwärtskompatibilität beim Laden:** Bestehende JSON-Dateien (Speichern
 vor diesem Feature) und ein evtl. schon vorhandener Autosave-Eintrag haben
 kein `project`-Feld. Sowohl der Autosave-Loader (Abschnitt 2) als auch
-„Laden" (`el('load').onchange`, app.js:440-446) müssen nach dem Parsen
+„Laden" (`el('load').onclick`, app.js:440-446 — der eigentliche
+Datei-Parse-Callback ist `rd.onload` auf den dynamisch erzeugten
+`<input type=file>`, Zeilen 443-444) müssen nach dem Parsen
 `state.project = state.project || {betreiberName:'', betreiberAdresse:'',
 standortAdresse:'', erstellerFirma:'', erstellerOrt:'', datum:''}` absichern,
 bevor das Projekt-Panel oder der Export darauf zugreift — sonst wirft das
@@ -191,20 +193,60 @@ ein Element mit `pointer-events` blockiert den Drop-Zielbereich. Lässt sich
 der Bug nicht reproduzieren, bleibt Abschnitt 5a entfallen (kein Fix ohne
 reproduzierten Fehler).
 
+Ein zusätzlicher, spezifisch zu prüfender Verdacht: Abschnitt 1 dieses
+Specs führt `user-select:none` auf `#app` ein, einem Vorfahren der
+`draggable=true`-`.pitem`-Elemente. In WebKit-Browsern kann
+`user-select:none` auf einem Vorfahren eines `[draggable]`-Elements das
+native HTML5-Drag unterdrücken, sofern nicht zusätzlich
+`-webkit-user-drag:element` explizit auf dem `.pitem` selbst gesetzt wird.
+Da Abschnitt 1 und dieser Fix im selben Zug umgesetzt werden, muss diese
+Wechselwirkung explizit getestet werden (z.B. `.pitem{-webkit-user-drag:
+element}` ergänzen, falls das Problem erst nach Abschnitt 1 auftritt).
+
 **5b. Platzhalter-Werte stecken im echten Feldwert statt in `placeholder`.**
 Aktuell werden Default-Strings wie `__ kVA` oder `__ kWp` beim Anlegen
 eines Bausteins direkt als `n.fields[key]` gesetzt (`addNode()`,
 `c.fields.forEach(f=>fields[f[0]]=f[2])`) und erscheinen dadurch im
 Inspector-Input als normaler, ununterscheidbarer Wert. Für Pläne, die zur
 Netzanmeldung eingereicht werden, ist das riskant: unausgefüllte
-Pflichtangaben fallen nicht auf. Fix: Platzhalter-Strings in `LIB` (dritter
-Wert je `fields`-Eintrag) werden beim Anlegen **nicht** mehr in
-`n.fields` vorbefüllt (Feld startet leer), sondern nur noch als
-HTML-`placeholder`-Attribut auf dem jeweiligen Inspector-`<input>`
-gerendert (`inspector()`-Funktion). Auf der Zeichenfläche/im Export werden
-leere Felder entsprechend ausgeblendet (verhält sich wie die bestehende
-`subs.filter(v=>v&&v.trim())`-Logik, die leere Werte bereits herausfiltert
-— das greift dann automatisch auch für tatsächlich leere Pflichtfelder).
+Pflichtangaben fallen nicht auf.
+
+**Wichtig — Scope-Einschränkung:** Nur die tatsächlichen Platzhalter
+betrifft das (Werte, die mit `__` beginnen, z.B. `__ kVA`, `__ kWp`,
+`__ kWh`, `__ / __`). Die meisten dritten Werte in `LIB.*.fields` sind
+dagegen sinnvolle, echte Vorbelegungen (z.B. `hak.fuse='NH 63 A'`,
+`netz.u='400/230 V'`, `sls.rating='35 A'`, `wallbox.p='11 kW'`,
+`battery.typ='LiFePO4'`, sowie praktisch jeder `name`-Feld-Default wie
+`'HAK'` oder `'Cerbo GX'`) und müssen wie bisher vorbefüllt bleiben — sie
+sind keine Platzhalter und dürfen durch diesen Fix nicht verloren gehen.
+
+**Fix:** Nur Werte, die dem Platzhalter-Muster (Präfix `__`) entsprechen,
+werden beim Anlegen **nicht** mehr in `n.fields` vorbefüllt (Feld startet
+leer), sondern nur noch als HTML-`placeholder`-Attribut auf dem
+jeweiligen Inspector-`<input>` gerendert (`inspector()`-Funktion). Alle
+anderen Default-Werte bleiben wie bisher vorbefüllt. Auf der
+Zeichenfläche/im Export werden leere Felder entsprechend ausgeblendet
+(verhält sich wie die bestehende `subs.filter(v=>v&&v.trim())`-Logik, die
+leere Werte bereits herausfiltert — das greift dann automatisch auch für
+tatsächlich leere Pflichtfelder).
+
+**Weitere Fundstellen mit derselben Logik:** `seed()` (app.js:480-490)
+dupliziert dieselbe Vorbefüllungs-Zeile unabhängig und legt u.a. `pvwr`,
+`pvgen`, `multi` und `battery` an — also genau die Typen mit `__`-Platz-
+haltern. Da `seed()` weiterhin als Erstbesuch-Beispielplan dient (Abschnitt
+2), muss der Fix auch dort greifen, sonst zeigt der Demo-Plan weiterhin
+`"__ kVA"` als sichtbaren Text. Am saubersten: eine gemeinsame Hilfsfunktion
+(z.B. `fillFields(c)`, die das `__`-Filtern kapselt) für `addNode()` und
+`seed()` verwenden, statt die Logik zweimal zu pflegen.
+
+**Bereits gespeicherte Daten:** Alte JSON-Dateien oder ein bereits
+bestehender Autosave-Eintrag können Platzhalter-Strings schon fest in
+`n.fields` stehen haben. Da eine Migration bestehender Nutzerdaten nicht
+zuverlässig zwischen "Nutzer hat `__ kVA` absichtlich stehen lassen" und
+"nie ausgefüllt" unterscheiden kann, wird hier **keine** automatische
+Bereinigung beim Laden vorgenommen — das Risiko besteht nur für Pläne, die
+vor diesem Fix erstellt wurden, und ist durch die grundsätzliche Sorgfalt
+vor einer Einreichung abgedeckt, nicht durch Code.
 
 ## 6. Polish-Fixes aus dem UI/UX-Review
 
@@ -262,7 +304,7 @@ leere Felder entsprechend ausgeblendet (verhält sich wie die bestehende
   - Bauteile platzieren, Seite neu laden → Plan ist wiederhergestellt.
   - Projektdaten ausfüllen, SVG/PNG exportieren → Schriftfeld korrekt
     befüllt sichtbar.
-  - Palette- und Node-Icons für alle 17 Bauteiltypen sichtbar und
+  - Palette- und Node-Icons für alle 18 Bauteiltypen sichtbar und
     unterscheidbar.
   - Bauteil aus Palette per echtem Maus-Drag (nicht nur Klick) auf die
     Fläche ziehen → Node wird angelegt.
