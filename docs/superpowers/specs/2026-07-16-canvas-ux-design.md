@@ -26,6 +26,12 @@ werden:
 (einklappbare Seitenleisten unter ~1024px) ist ein eigenständiges
 Redesign-Thema und wird in einem separaten Design-Gespräch behandelt.
 
+**Umsetzung:** Die sechs Abschnitte sind größtenteils unabhängig
+voneinander (unterschiedliche Dateien/Funktionen betroffen). Der
+Implementierungsplan (nächster Schritt nach diesem Spec) sollte sie als
+separate, einzeln verifizierbare Schritte planen statt als eine
+monolithische Änderung.
+
 ## 1. Bugfix: Textmarkierung beim Ziehen
 
 **Ursache:** Es fehlt `user-select:none` auf der App-Shell/Zeichenfläche, und
@@ -74,10 +80,13 @@ Wiederherstellung reicht die Standardansicht bzw. der Nutzer nutzt
 
 ## 3. Icons pro Bauteiltyp
 
-**Umfang:** Je ein Icon für alle aktuell 17 Einträge in `LIB` (Netz, HAK,
+**Umfang:** Je ein Icon für jeden Eintrag in `LIB` (aktuell 18: Netz, HAK,
 SLS, Zähler, Grid-Meter, UV, PV-WR, PV-Generator, MPPT, Multi-/Batterie-WR,
 Batterie-WR AC, Batteriespeicher, DC-Sammelschiene, Cerbo/EMS, Wallbox,
-Verbraucher, Backup-Verteilung, Steuerbox §14a).
+Verbraucher, Backup-Verteilung, Steuerbox §14a). Die Anzahl ändert sich
+ggf. künftig — Implementierung muss `Object.keys(LIB)` iterieren statt sich
+auf eine feste Anzahl zu verlassen, damit kein neuer Bauteiltyp ohne Icon
+bleibt.
 
 **Stil:** Inline-SVG im bestehenden Look der Toolbar-Icons (`viewBox 0 0 24
 24`, `stroke="currentColor"`, `stroke-width ~1.6–2`, `fill="none"`,
@@ -111,29 +120,50 @@ Verteilnetzbetreiber) ein **Schriftfeld** mit Betreiber-, Standort- und
 Errichterangaben plus Titelzeile üblich.
 
 **Neues Datenfeld:** `state.project = {betreiberName, betreiberAdresse,
-standortAdresse, erstellerFirma, erstellerOrt, datum}`. Wird Teil des
-regulären State — landet damit automatisch in `snapshot()`/Undo-Historie,
-im JSON-Speichern/Laden und im neuen Autosave (Abschnitt 2), ohne
-Sonderbehandlung.
+standortAdresse, erstellerFirma, erstellerOrt, datum}`. Damit es sich wie
+jedes andere editierbare Feld verhält (undo-/redo-fähig, in Datei-Export
+und Autosave enthalten), müssen `snapshot()` und `restore()` (app.js:83/85)
+explizit um `project` erweitert werden — aktuell serialisieren/restaurieren
+beide Funktionen nur `{nodes, wires, seq}`, `project` würde sonst weder
+Undo-fähig sein noch beim Laden zurückgeschrieben.
+
+**Abwärtskompatibilität beim Laden:** Bestehende JSON-Dateien (Speichern
+vor diesem Feature) und ein evtl. schon vorhandener Autosave-Eintrag haben
+kein `project`-Feld. Sowohl der Autosave-Loader (Abschnitt 2) als auch
+„Laden" (`el('load').onchange`, app.js:440-446) müssen nach dem Parsen
+`state.project = state.project || {betreiberName:'', betreiberAdresse:'',
+standortAdresse:'', erstellerFirma:'', erstellerOrt:'', datum:''}` absichern,
+bevor das Projekt-Panel oder der Export darauf zugreift — sonst wirft das
+Lesen von z.B. `state.project.betreiberName` bei älteren Dateien.
 
 **UI:** Neuer Header-Button „Projekt" (Icon, Position neben „Speichern")
 öffnet ein Panel/Dialog mit den obigen Feldern als einfache Text-Inputs
 (analog zum bestehenden Inspector-Feld-Stil), „Datum" vorbefüllt mit
 heutigem Datum, aber editierbar. Speichern der Felder verhält sich wie die
-Inspector-Felder (Eingabe → State-Update → Autosave greift automatisch).
+Inspector-Felder (Eingabe → State-Update, gekoppelt an `pushHistory()` beim
+ersten Zeichen je Feld analog zu `inp._touched` im Inspector → Autosave
+greift automatisch).
 
 **Export-Erweiterung (`serializeSVG()`):**
 - Zusätzliche Titelzeile oberhalb des Diagramms: „Übersichtsschaltplan
   nach VDE-AR-N 4105".
-- Schriftfeld-Tabelle unterhalb des Diagramms (innerhalb der exportierten
-  SVG-Bounding-Box, analog zum recherchierten Referenz-Layout):
-  Betreiber (Name + Adresse) / Anlagenstandort / Anlagenerrichter (Firma,
-  Ort) + Datum + leere Unterschriftslinie.
+- Schriftfeld-Tabelle unterhalb des Diagramms (innerhalb der erweiterten
+  SVG-Bounding-Box), Feldreihenfolge analog zum recherchierten
+  VDE-AR-N-4105-Referenzlayout (EWR-Netze-Vorlage), von oben nach unten:
+  1. Zeile „Betreiber" — Name | Adresse
+  2. Zeile „Anlagenstandort" — Adresse (bei Bedarf identisch zu Zeile 1)
+  3. Zeile „Anlagenerrichter" — Firma, Ort | „Datum" | „Unterschrift
+     Anlagenerrichter" (leere Linie, da digital erzeugt)
 - Sowohl `exportSvg` als auch `png`-Export (der `serializeSVG()`
   wiederverwendet) erhalten das Schriftfeld automatisch, da beide auf
   derselben Funktion basieren.
-- Bereits vorhandene Diagramm-Legende (Leitungsarten/Port-Status) bleibt
-  unverändert erhalten.
+- **Legende wird neu in den Export aufgenommen:** Die Legende
+  (Leitungsarten/Port-Status) existiert bislang nur als HTML im
+  `aside.inspector`-Panel (index.html:217-224) und ist **nicht** Teil des
+  aktuellen SVG-/PNG-Exports (`serializeSVG()` klont nur `#viewport`, also
+  Wires+Nodes). Für ein einreichungsfertiges Dokument wird sie im Rahmen
+  dieser Änderung erstmals als eigenes SVG-Fragment in den Export
+  übernommen (unterhalb oder neben dem Schriftfeld), nicht nur „erhalten".
 
 **Nicht im Scope:** Kein separater PDF-Export (Nutzerentscheidung: SVG/PNG
 mit Schriftfeld reicht), kein Abgleich mit einem offiziellen Netze-BW-PDF-
@@ -142,22 +172,24 @@ VDE-AR-N-4105-Muster.
 
 ## 5. High-Prio-Fixes aus dem UI/UX-Review
 
-**5a. Drag&Drop aus der Palette funktioniert nicht zuverlässig.** Live-Test
-zeigte: Ziehen eines Palette-Eintrags auf die Fläche erzeugt keinen Node
-(nur die Textmarkierung aus Abschnitt 1 tritt auf); Klick funktioniert
-zuverlässig. Ursache ist vermutlich, dass native `dragstart`/`drop`-Events
-(HTML5 Drag&Drop API, siehe `.pitem`-`dragstart`-Listener und
-`stage`-`drop`-Listener in `app.js`) mit dem eigenen Pointer-basierten
-Interaktionssystem (`pointerdown`/`pointermove`) kollidieren bzw. auf
-manchen Eingabepfaden (Touch, synthetische Events) gar nicht feuern. Fix im
-Rahmen dieser Runde: den bestehenden HTML5-Drag&Drop-Pfad robuster machen
-(sicherstellen, dass `dragover`/`drop` korrekt `preventDefault()` aufrufen
-und die Koordinatenumrechnung mit `toWorld()` bei jedem Drop-Event
-zuverlässig funktioniert) und mit echtem Maus-Drag im Browser verifizieren
-statt nur mit Klick. Eine vollständige Umstellung auf ein reines
-Pointer-Event-Drag (ohne HTML5 DnD) ist eine Option, falls der Robustheits-
-Fix nicht ausreicht — Entscheidung fällt bei der Umsetzung anhand des
-Testergebnisses.
+**5a. Drag&Drop aus der Palette funktioniert nicht zuverlässig.** Ein
+Live-Review meldete: Ziehen eines Palette-Eintrags auf die Fläche erzeugt
+keinen Node (nur die Textmarkierung aus Abschnitt 1 tritt auf); Klick
+funktioniert zuverlässig. **Wichtig für die Umsetzung:** Der naheliegende
+Verdacht — fehlendes `preventDefault()` auf `dragover`/`drop` — trifft
+nicht zu; `app.js:415-418` ruft `preventDefault()` in beiden Handlern
+bereits korrekt auf und nutzt `toWorld()` für die Koordinaten. Die exakte
+Ursache ist damit **noch ungeklärt** (der Review nutzte ggf. simulierte
+statt echter Browser-Drag-Events, was die HTML5-DnD-API anders auslösen
+kann als eine reale Maus-Drag-Geste). Erster Schritt bei der Umsetzung ist
+daher, den Bug mit einer **echten** Maus-Drag-Geste im Browser zu
+reproduzieren, bevor ein Fix geschrieben wird. Mögliche Ursachen, die dabei
+zu prüfen sind: fehlendes `effectAllowed`/`dropEffect`, das `key`-MIME-Type
+in `dataTransfer.setData('key', key)` (app.js:112) wird von manchen
+Browsern beim Cross-Element-Drag anders behandelt als `text/plain`, oder
+ein Element mit `pointer-events` blockiert den Drop-Zielbereich. Lässt sich
+der Bug nicht reproduzieren, bleibt Abschnitt 5a entfallen (kein Fix ohne
+reproduzierten Fehler).
 
 **5b. Platzhalter-Werte stecken im echten Feldwert statt in `placeholder`.**
 Aktuell werden Default-Strings wie `__ kVA` oder `__ kWp` beim Anlegen
@@ -190,7 +222,14 @@ leere Felder entsprechend ausgeblendet (verhält sich wie die bestehende
   passende `aria-label`s auf Node-Gruppen ergänzen; Pfeiltasten verschieben
   den ausgewählten Node (kleine Schrittweite, analog zum Grid-Snap),
   `Entf`/`Backspace` funktioniert für fokussierte Elemente bereits über den
-  bestehenden `sel`-State.
+  bestehenden `sel`-State. Zwei Punkte, die die Umsetzung beachten muss:
+  (1) `render()` leert `gNodes` per `innerHTML=''` und baut alle Node-`<g>`
+  bei jeder Änderung neu auf (app.js:175) — das zerstört den DOM-Fokus bei
+  jedem Tastendruck, die Implementierung muss den Fokus nach `render()`
+  aktiv auf das (weiterhin) ausgewählte Element zurücksetzen; (2)
+  wiederholte Pfeiltasten-Drucke müssen wie beim Maus-Drag
+  (`drag.started`-Flag) oder den Inspector-Feldern (`inp._touched`) zu
+  **einem** Undo-Schritt koalesziert werden, nicht zu einem pro Tastendruck.
 - **Kontrast der Port-Labels zu gering:** `--faint`-Farbe (`#5b6674`) für
   `.port-label` durch einen helleren Ton ersetzen, der WCAG-AA-Kontrast
   (≥4.5:1) auf `--bg` erreicht.
@@ -211,6 +250,10 @@ leere Felder entsprechend ausgeblendet (verhält sich wie die bestehende
   Autosave-Fallback braucht keinen Alert, da kein Nutzer-Trigger).
 - `localStorage` nicht verfügbar (z.B. Privatmodus mit Blockierung) →
   Schreibversuch in `try/catch`, App funktioniert weiter ohne Autosave.
+- Strukturell valider, aber älterer State (JSON-Datei oder Autosave-Eintrag
+  ohne `project`-Feld, siehe Abschnitt 4) → beim Laden wird ein leeres
+  `project`-Objekt nachgetragen, damit Projekt-Panel und Export nicht auf
+  `undefined` zugreifen.
 
 ## Testing / Verifikation
 
