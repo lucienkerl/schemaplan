@@ -108,7 +108,11 @@ Zero-Dependency-Architektur.
 - **Zeichenfläche (`render()`)**: kleines Icon-Badge (ca. 16–18px) oben
   links im Node-Rechteck, zusätzlich zum bestehenden farbigen Balken/Titel
   — Node-Abmessungen (`w`/`h` in `LIB`) bleiben unverändert, das Icon nutzt
-  vorhandenen Freiraum neben dem Titeltext.
+  vorhandenen Freiraum neben dem Titeltext. Bei den kleinsten/schmalsten
+  Nodes (z.B. `dcbus` 100×42, `cerbo` 114×50, `steuerbox`/`load` 108×50)
+  mit gleichzeitig langen Default-Namen (z.B. `backup`: "Ersatzstrom-
+  Verteilung") visuell prüfen, ob das Badge den zentrierten Titeltext
+  bedrängt, und bei Bedarf die Titelposition/-größe dort anpassen.
 
 ## 4. Netze-BW-konformer Export (Projektdaten + Schriftfeld)
 
@@ -262,7 +266,9 @@ vor einer Einreichung abgedeckt, nicht durch Code.
   Nähe der Mitte.
 - **Keine Tastaturbedienung auf der Zeichenfläche:** `tabindex="0"` und
   passende `aria-label`s auf Node-Gruppen ergänzen; Pfeiltasten verschieben
-  den ausgewählten Node (kleine Schrittweite, analog zum Grid-Snap),
+  den ausgewählten Node um den bestehenden Grid-Snap-Schritt (12px, vgl.
+  `snap()` app.js:125; optional größerer Schritt mit gedrückter Umschalt-
+  taste),
   `Entf`/`Backspace` funktioniert für fokussierte Elemente bereits über den
   bestehenden `sel`-State. Zwei Punkte, die die Umsetzung beachten muss:
   (1) `render()` leert `gNodes` per `innerHTML=''` und baut alle Node-`<g>`
@@ -272,9 +278,15 @@ vor einer Einreichung abgedeckt, nicht durch Code.
   wiederholte Pfeiltasten-Drucke müssen wie beim Maus-Drag
   (`drag.started`-Flag) oder den Inspector-Feldern (`inp._touched`) zu
   **einem** Undo-Schritt koalesziert werden, nicht zu einem pro Tastendruck.
-- **Kontrast der Port-Labels zu gering:** `--faint`-Farbe (`#5b6674`) für
-  `.port-label` durch einen helleren Ton ersetzen, der WCAG-AA-Kontrast
-  (≥4.5:1) auf `--bg` erreicht.
+- **Kontrast der Port-Labels zu gering:** `.port-label` verwendet aktuell
+  `fill:var(--faint)` (`#5b6674`, index.html:139) — auf `--bg` nur ~3.3:1
+  Kontrast. **Scope-Einschränkung:** Nur die `.port-label`-Regel bekommt
+  einen eigenen, helleren `fill`-Wert (≥4.5:1 WCAG-AA auf `--bg`); die
+  CSS-Variable `--faint` selbst bleibt unverändert, da sie in sieben
+  weiteren, bewusst zurückhaltenden UI-Elementen wiederverwendet wird
+  (u.a. Such-Icon, `.pgroup`-Labels, Zoom-%, Inspector-Überschrift,
+  Legenden-Überschrift, Privacy-Hinweis) und dort nicht verändert werden
+  soll.
 - **Inkonsistente Lösch-Bestätigung:** `removeNode()`/`removeWire()` löschen
   sofort (abgesichert durch Undo), `clear`-Button nutzt `confirm()`. Da
   Undo für Einzel-Löschungen ausreichend Schutz bietet (mit Toast-Feedback),
