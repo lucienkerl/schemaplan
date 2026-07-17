@@ -557,21 +557,58 @@ function openProjectModal(){
 el('project').onclick=openProjectModal;
 
 /* ---------------- export ---------------- */
+function legendSVG(){
+  const rows=[['AC-Leitung',KINDCOL.ac],['DC-Leitung',KINDCOL.dc],['Signal / Steuerung',KINDCOL.sig]];
+  let out='<g font-family="ui-monospace,monospace" font-size="11" fill="#8896a6">';
+  rows.forEach((r,i)=>{
+    const ry=i*20;
+    out+=`<line x1="0" y1="${ry}" x2="22" y2="${ry}" stroke="${r[1]}" stroke-width="3" stroke-linecap="round"/>`;
+    out+=`<text x="30" y="${ry+4}">${r[0]}</text>`;
+  });
+  return out+'</g>';
+}
+function schriftfeldSVG(w,h){
+  const p=state.project;
+  const esc=(s)=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const row=(label,val,ry)=>
+    `<text x="10" y="${ry}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">${label}</text>`+
+    `<text x="10" y="${ry+15}" font-family="Inter,sans-serif" font-size="12" fill="#e8eef5">${esc(val)||'—'}</text>`;
+  const third=h/3;
+  let out='<g>';
+  out+=`<rect x="0" y="0" width="${w}" height="${h}" fill="none" stroke="#2a3441"/>`;
+  out+=`<line x1="0" y1="${third}" x2="${w}" y2="${third}" stroke="#2a3441"/>`;
+  out+=`<line x1="0" y1="${2*third}" x2="${w}" y2="${2*third}" stroke="#2a3441"/>`;
+  out+=`<line x1="${w*0.6}" y1="${2*third}" x2="${w*0.6}" y2="${h}" stroke="#2a3441"/>`;
+  out+=`<line x1="${w*0.8}" y1="${2*third}" x2="${w*0.8}" y2="${h}" stroke="#2a3441"/>`;
+  out+=row('Betreiber',[p.betreiberName,p.betreiberAdresse].filter(Boolean).join(' · '),18);
+  out+=row('Anlagenstandort',p.standortAdresse,third+18);
+  out+=row('Anlagenerrichter',[p.erstellerFirma,p.erstellerOrt].filter(Boolean).join(', '),2*third+18);
+  out+=`<text x="${w*0.6+10}" y="${2*third+18}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">Datum</text>`;
+  out+=`<text x="${w*0.6+10}" y="${2*third+33}" font-family="Inter,sans-serif" font-size="12" fill="#e8eef5">${esc(p.datum)||'—'}</text>`;
+  out+=`<text x="${w*0.8+10}" y="${2*third+18}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">Unterschrift Anlagenerrichter</text>`;
+  out+=`<line x1="${w*0.8+10}" y1="${h-14}" x2="${w-10}" y2="${h-14}" stroke="#5b6674"/>`;
+  return out+'</g>';
+}
 function serializeSVG(){
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
   for(const n of state.nodes){const c=LIB[n.key];x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+c.w);y1=Math.max(y1,n.y+c.h);}
   if(!isFinite(x0)){x0=0;y0=0;x1=400;y1=300;}
-  const pad=48;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const w=x1-x0,h=y1-y0;
+  const pad=48;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const dw=x1-x0,dh=y1-y0;
+  const TITLE_H=40,LEGEND_H=76,SCHRIFT_H=100;
+  const w=dw,h=TITLE_H+dh+LEGEND_H+SCHRIFT_H;
   const clone=VP.cloneNode(true);
   const tw=clone.querySelector('#tempwire');if(tw)clone.removeChild(tw);
   // strip invisible hit paths/circles from clone
   clone.querySelectorAll('.wirehit,.port').forEach(e=>e.remove());
-  clone.setAttribute('transform',`translate(${-x0},${-y0})`);
+  clone.setAttribute('transform',`translate(${-x0},${-y0+TITLE_H})`);
   const css=document.querySelector('style').textContent;
+  const title=`<text x="${w/2}" y="26" text-anchor="middle" font-family="Inter,sans-serif" font-size="15" font-weight="600" fill="#e8eef5">Übersichtsschaltplan nach VDE-AR-N 4105</text>`;
+  const legend=`<g transform="translate(16,${TITLE_H+dh+16})">${legendSVG()}</g>`;
+  const schrift=`<g transform="translate(0,${TITLE_H+dh+LEGEND_H})">${schriftfeldSVG(w,SCHRIFT_H)}</g>`;
   const svg=`<svg xmlns="${SVGNS}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
     +`<style>${css}</style>`
     +`<rect width="${w}" height="${h}" fill="#0d1017"/>`
-    +clone.outerHTML+`</svg>`;
+    +title+clone.outerHTML+legend+schrift+`</svg>`;
   return {svg,w,h};
 }
 el('exportSvg').onclick=()=>{const {svg}=serializeSVG();dl(new Blob([svg],{type:'image/svg+xml'}),'schaltplan.svg');showToast('SVG exportiert');};
