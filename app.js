@@ -475,7 +475,7 @@ window.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return;}
   if((e.key==='Delete'||e.key==='Backspace')&&sel&&!typing){e.preventDefault();
     sel.type==='wire'?removeWire(sel.id):removeNode(sel.id);}
-  if(e.key==='Escape'){closeCtx();selectItem(null);}
+  if(e.key==='Escape'){if(projectModalEl){projectModalEl.remove();projectModalEl=null;return;}closeCtx();selectItem(null);}
 });
 window.addEventListener('keyup',e=>{if(e.code==='Space'){space=false;SVG.classList.remove('panready');}});
 
@@ -545,8 +545,10 @@ function openProjectModal(){
   const dEl=bd.querySelector('input[data-k="datum"]');
   if(!dEl.value){
     pushHistory();
-    dEl.value=new Date().toISOString().slice(0,10);
-    state.project.datum=dEl.value;
+    const now=new Date();
+    const localDate=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    dEl.value=localDate;
+    state.project.datum=localDate;
     render();
   }
   bd.addEventListener('pointerdown',e=>{if(e.target===bd)closeModal();});
