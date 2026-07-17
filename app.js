@@ -130,7 +130,8 @@ function defaultProject(){return {betreiber:'',anschrift:'',ersteller:'',datum:'
   zaehlerNr:'',mastrNr:''};}
 let state={nodes:[],wires:[],seq:1,project:defaultProject()};
 let view={x:120,y:80,k:1};
-let sel=null;        // {type:'node'|'wire', id}
+let sel=null;        // {type:'node'|'wire', id} — primary selection (inspector, wire)
+let selNodes=new Set(); // ids of all selected nodes (multi-select)
 let history=[], future=[];
 
 /* ---------------- dom refs ---------------- */
@@ -149,7 +150,7 @@ function syncProjectModal(){
   });
 }
 function restore(s){const o=JSON.parse(s);state.nodes=o.nodes;state.wires=o.wires;state.seq=o.seq;
-  state.project=o.project||defaultProject();sel=null;render();inspector();syncProjectModal();}
+  state.project=o.project||defaultProject();sel=null;selNodes=new Set();render();inspector();syncProjectModal();}
 function undo(){if(!history.length)return;future.push(snapshot());restore(history.pop());updateUndo();showToast('Rückgängig');}
 function redo(){if(!future.length)return;history.push(snapshot());restore(future.pop());updateUndo();showToast('Wiederholt');}
 function updateUndo(){el('undo').disabled=!history.length;el('redo').disabled=!future.length;}
@@ -241,15 +242,18 @@ function addNode(key,wx,wy){
   }
   const fields=fillFields(c);
   const n={id:'n'+(state.seq++),key,x:snap(wx),y:snap(wy),fields};
-  state.nodes.push(n);sel={type:'node',id:n.id};render();inspector();
+  state.nodes.push(n);sel={type:'node',id:n.id};selNodes=new Set([n.id]);render();inspector();
   hint.style.display='none';showToast(c.name+' hinzugefügt');
 }
-function removeNode(id){
+function removeNodes(ids){
   pushHistory();
-  state.nodes=state.nodes.filter(n=>n.id!==id);
-  state.wires=state.wires.filter(w=>w.from.node!==id&&w.to.node!==id);
-  sel=null;render();inspector();showToast('Baustein gelöscht');
+  const s=new Set(ids);
+  state.nodes=state.nodes.filter(n=>!s.has(n.id));
+  state.wires=state.wires.filter(w=>!s.has(w.from.node)&&!s.has(w.to.node));
+  sel=null;selNodes=new Set();render();inspector();
+  showToast(ids.length>1?ids.length+' Bausteine gelöscht':'Baustein gelöscht');
 }
+function removeNode(id){removeNodes([id]);}
 function removeWire(id){
   pushHistory();
   state.wires=state.wires.filter(w=>w.id!==id);
@@ -289,8 +293,8 @@ function render(){
     const g=mk('g',{transform:`translate(${n.x},${n.y})`,class:'node',tabindex:'0',role:'group',
       'aria-label':(n.fields.name||c.name)});
     g.dataset.id=n.id;
-    if(sel&&sel.type==='node'&&sel.id===n.id)g.classList.add('sel');
-    const strokeW=(sel&&sel.type==='node'&&sel.id===n.id)?2.4:1.4;
+    if(selNodes.has(n.id))g.classList.add('sel');
+    const strokeW=selNodes.has(n.id)?2.4:1.4;
 
     g.appendChild(mk('rect',{class:'node-body',width:c.w,height:c.h,rx:7,fill:'#141922',
       stroke:c.color,'stroke-width':strokeW}));
@@ -341,13 +345,23 @@ function render(){
   }
   updateStats();
 }
+// Orthogonal (right-angle) routing: short stub out of each port, then H/V
+// segments. When the two ports share a Y (or X), it collapses to a straight
+// horizontal (or vertical) line — matching the VDE-AR-N reference style.
 function wirePath(a,b){
-  const off=Math.max(30,Math.abs(a.x-b.x)/2,Math.abs(a.y-b.y)/2);
-  const c1x=a.side==='l'?a.x-off:a.side==='r'?a.x+off:a.x;
-  const c1y=a.side==='t'?a.y-off:a.side==='b'?a.y+off:a.y;
-  const c2x=b.side==='l'?b.x-off:b.side==='r'?b.x+off:b.x;
-  const c2y=b.side==='t'?b.y-off:b.side==='b'?b.y+off:b.y;
-  return `M${a.x},${a.y} C${c1x},${c1y} ${c2x},${c2y} ${b.x},${b.y}`;
+  const s=16;
+  const ah=(a.side==='l'||a.side==='r'), bh=(b.side==='l'||b.side==='r');
+  const ax=a.x+(a.side==='l'?-s:a.side==='r'?s:0), ay=a.y+(a.side==='t'?-s:a.side==='b'?s:0);
+  const bx=b.x+(b.side==='l'?-s:b.side==='r'?s:0), by=b.y+(b.side==='t'?-s:b.side==='b'?s:0);
+  const pts=[[a.x,a.y],[ax,ay]];
+  if(ah&&bh){const mx=(ax+bx)/2;pts.push([mx,ay],[mx,by]);}       // H ports: vertical jog at mid-x
+  else if(!ah&&!bh){const my=(ay+by)/2;pts.push([ax,my],[bx,my]);}// V ports: horizontal jog at mid-y
+  else if(ah&&!bh){pts.push([bx,ay]);}                            // H→V elbow
+  else{pts.push([ax,by]);}                                        // V→H elbow
+  pts.push([bx,by],[b.x,b.y]);
+  // drop consecutive duplicate points (keeps a clean straight line when aligned)
+  const clean=pts.filter((p,i)=>i===0||p[0]!==pts[i-1][0]||p[1]!==pts[i-1][1]);
+  return 'M'+clean.map(p=>p.join(',')).join(' L');
 }
 function renderWires(){
   gWires.innerHTML='';
@@ -381,9 +395,16 @@ function updateStats(){
 /* ---------------- inspector ---------------- */
 function inspector(){
   const body=el('insp-body');
+  if(selNodes.size>1){
+    body.innerHTML=`<div class="insp-head"><span class="dot" style="background:var(--accent)"></span><span>${selNodes.size} Bausteine ausgewählt</span></div>
+      <div class="empty" style="margin-bottom:12px">Ziehe die Auswahl, um alle zusammen zu verschieben. Mit den Pfeiltasten fein verschieben.</div>
+      <button class="del" id="delmulti"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>${selNodes.size} Bausteine löschen</button>`;
+    el('delmulti').onclick=()=>removeNodes([...selNodes]);
+    return;
+  }
   if(!sel){
     body.innerHTML=`<div class="empty"><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 2l3 7 7 .5-5.5 4.5 2 7L12 17l-6.5 4 2-7L2 9.5 9 9z"/></svg></div>
-      Nichts ausgewählt.<br><br>Wähle einen Baustein oder eine Verbindung auf der Zeichenfläche, um sie zu bearbeiten.</div>`;
+      Nichts ausgewählt.<br><br>Wähle einen Baustein oder eine Verbindung auf der Zeichenfläche, um sie zu bearbeiten.<br><br>Mehrere markieren: leeres Feld aufziehen. Fläche verschieben: Shift/Strg + ziehen.</div>`;
     return;
   }
   if(sel.type==='wire'){
@@ -414,7 +435,7 @@ function inspector(){
   }));
   el('delnode').onclick=()=>removeNode(n.id);
 }
-function selectItem(s){sel=s;arrowMoveStarted=false;render();inspector();}
+function selectItem(s){sel=s;selNodes=(s&&s.type==='node')?new Set([s.id]):new Set();arrowMoveStarted=false;render();inspector();}
 
 /* ---------------- context menu ---------------- */
 let ctxEl=null;
@@ -450,11 +471,11 @@ SVG.addEventListener('contextmenu',e=>{
 });
 function dupNode(id){const n=state.nodes.find(x=>x.id===id);if(!n)return;pushHistory();
   const copy={id:'n'+(state.seq++),key:n.key,x:n.x+24,y:n.y+24,fields:{...n.fields}};
-  state.nodes.push(copy);sel={type:'node',id:copy.id};render();inspector();showToast('Dupliziert');}
+  state.nodes.push(copy);sel={type:'node',id:copy.id};selNodes=new Set([copy.id]);render();inspector();showToast('Dupliziert');}
 document.addEventListener('pointerdown',e=>{if(ctxEl&&!ctxEl.contains(e.target))closeCtx();},true);
 
 /* ---------------- interaction ---------------- */
-let drag=null,wiring=null,panning=null,space=false,moved=false,addOffset=0,arrowMoveStarted=false,arrowMoveTimer=null;
+let drag=null,wiring=null,panning=null,marquee=null,space=false,moved=false,addOffset=0,arrowMoveStarted=false,arrowMoveTimer=null;
 
 SVG.addEventListener('pointerdown',e=>{
   closeCtx();
@@ -475,22 +496,43 @@ SVG.addEventListener('pointerdown',e=>{
   if(wireEl){selectItem({type:'wire',id:wireEl.dataset.wire});return;}
   if(nodeEl){
     const n=state.nodes.find(x=>x.id===nodeEl.dataset.id);
-    selectItem({type:'node',id:n.id});
+    if(e.shiftKey||e.ctrlKey||e.metaKey){ // toggle this node in the multi-selection
+      if(selNodes.has(n.id))selNodes.delete(n.id);else selNodes.add(n.id);
+      sel=selNodes.size===1?{type:'node',id:[...selNodes][0]}:null;
+      render();inspector();try{SVG.setPointerCapture(e.pointerId);}catch(_){}return;
+    }
     const p=toWorld(e.clientX,e.clientY);
-    drag={id:n.id,dx:p.x-n.x,dy:p.y-n.y,started:false};moved=false;
+    if(selNodes.has(n.id)&&selNodes.size>1){ // drag the whole group together
+      drag={group:true,ids:[...selNodes],sx:p.x,sy:p.y,
+        orig:new Map([...selNodes].map(id=>{const nn=state.nodes.find(x=>x.id===id);return[id,{x:nn.x,y:nn.y}];})),started:false};moved=false;
+    }else{
+      selectItem({type:'node',id:n.id});
+      drag={id:n.id,dx:p.x-n.x,dy:p.y-n.y,started:false};moved=false;
+    }
     try{SVG.setPointerCapture(e.pointerId);}catch(_){}return;
   }
-  // empty canvas: left-drag pans the view; a plain click (no drag) deselects
-  panning={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y,click:true,moved:false};
-  SVG.classList.add('panning');
+  // empty canvas: Shift/Ctrl + drag pans; a plain drag draws a selection rectangle
+  if(e.shiftKey||e.ctrlKey||e.metaKey){
+    panning={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y};SVG.classList.add('panning');
+    try{SVG.setPointerCapture(e.pointerId);}catch(_){}return;
+  }
+  const mp=toWorld(e.clientX,e.clientY);
+  marquee={x0:mp.x,y0:mp.y,x1:mp.x,y1:mp.y};
   try{SVG.setPointerCapture(e.pointerId);}catch(_){}
 });
 SVG.addEventListener('pointermove',e=>{
   if(drag){
     const p=toWorld(e.clientX,e.clientY);
-    const n=state.nodes.find(x=>x.id===drag.id);
     if(!drag.started){pushHistory();drag.started=true;}
-    n.x=snap(p.x-drag.dx);n.y=snap(p.y-drag.dy);moved=true;render();
+    if(drag.group){
+      const ddx=snap(p.x-drag.sx),ddy=snap(p.y-drag.sy);
+      drag.ids.forEach(id=>{const nn=state.nodes.find(x=>x.id===id);const o=drag.orig.get(id);nn.x=o.x+ddx;nn.y=o.y+ddy;});
+    }else{
+      const n=state.nodes.find(x=>x.id===drag.id);n.x=snap(p.x-drag.dx);n.y=snap(p.y-drag.dy);
+    }
+    moved=true;render();
+  }else if(marquee){
+    const p=toWorld(e.clientX,e.clientY);marquee.x1=p.x;marquee.y1=p.y;drawMarquee();
   }else if(wiring){
     const p=toWorld(e.clientX,e.clientY);
     const A=state.nodes.find(n=>n.id===wiring.node);const pa=portPos(A)[wiring.port];
@@ -498,10 +540,16 @@ SVG.addEventListener('pointermove',e=>{
     gTemp.appendChild(mk('path',{d:wirePath(pa,{x:p.x,y:p.y,side:'l'}),fill:'none',
       stroke:KINDCOL[pa.kind]||'#8896a6','stroke-width':2,'stroke-dasharray':'5 4','stroke-linecap':'round'}));
   }else if(panning){
-    if(Math.abs(e.clientX-panning.x)+Math.abs(e.clientY-panning.y)>3)panning.moved=true;
     view.x=panning.vx+(e.clientX-panning.x);view.y=panning.vy+(e.clientY-panning.y);applyView();
   }
 });
+function drawMarquee(){
+  const x=Math.min(marquee.x0,marquee.x1),y=Math.min(marquee.y0,marquee.y1),
+    w=Math.abs(marquee.x1-marquee.x0),h=Math.abs(marquee.y1-marquee.y0);
+  gTemp.innerHTML='';
+  gTemp.appendChild(mk('rect',{x,y,width:w,height:h,rx:2,fill:'rgba(79,209,197,.08)',
+    stroke:'#4fd1c5','stroke-width':1,'stroke-dasharray':'4 3'}));
+}
 SVG.addEventListener('pointerup',e=>{
   if(wiring){
     const target=document.elementFromPoint(e.clientX,e.clientY);
@@ -514,8 +562,20 @@ SVG.addEventListener('pointerup',e=>{
     }
     gTemp.innerHTML='';wiring=null;render();
   }
-  // a click on empty canvas that didn't turn into a pan → deselect
-  if(panning&&panning.click&&!panning.moved)selectItem(null);
+  if(marquee){
+    const minX=Math.min(marquee.x0,marquee.x1),maxX=Math.max(marquee.x0,marquee.x1),
+      minY=Math.min(marquee.y0,marquee.y1),maxY=Math.max(marquee.y0,marquee.y1);
+    gTemp.innerHTML='';
+    if(maxX-minX<4&&maxY-minY<4){ selectItem(null); } // tiny drag = a click → deselect
+    else{
+      const ids=state.nodes.filter(n=>{const c=LIB[n.key];
+        return n.x<maxX&&n.x+c.w>minX&&n.y<maxY&&n.y+c.h>minY;}).map(n=>n.id);
+      selNodes=new Set(ids);sel=ids.length===1?{type:'node',id:ids[0]}:null;
+      render();inspector();
+      if(ids.length)showToast(ids.length===1?'1 Baustein markiert':ids.length+' Bausteine markiert');
+    }
+    marquee=null;
+  }
   drag=null;panning=null;SVG.classList.remove('panning');
   try{SVG.releasePointerCapture(e.pointerId);}catch(_){}
 });
@@ -538,24 +598,21 @@ window.addEventListener('keydown',e=>{
   if(e.code==='Space'&&!typing){space=true;SVG.classList.add('panready');}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return;}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return;}
-  if(e.key.startsWith('Arrow')&&sel&&sel.type==='node'&&!typing){
+  if(e.key.startsWith('Arrow')&&selNodes.size&&!typing){
     e.preventDefault();
-    const n=state.nodes.find(x=>x.id===sel.id);if(!n)return;
     if(!arrowMoveStarted){pushHistory();arrowMoveStarted=true;}
     clearTimeout(arrowMoveTimer);
     arrowMoveTimer=setTimeout(()=>{arrowMoveStarted=false;},500);
-    const step=12;
-    if(e.key==='ArrowUp')n.y-=step;
-    if(e.key==='ArrowDown')n.y+=step;
-    if(e.key==='ArrowLeft')n.x-=step;
-    if(e.key==='ArrowRight')n.x+=step;
+    const step=12,dx=e.key==='ArrowLeft'?-step:e.key==='ArrowRight'?step:0,dy=e.key==='ArrowUp'?-step:e.key==='ArrowDown'?step:0;
+    selNodes.forEach(id=>{const n=state.nodes.find(x=>x.id===id);if(n){n.x+=dx;n.y+=dy;}});
     render();
-    const gEl=gNodes.querySelector(`g[data-id="${n.id}"]`);
-    if(gEl)gEl.focus();
+    if(selNodes.size===1){const gEl=gNodes.querySelector(`g[data-id="${[...selNodes][0]}"]`);if(gEl)gEl.focus();}
     return;
   }
-  if((e.key==='Delete'||e.key==='Backspace')&&sel&&!typing){e.preventDefault();
-    sel.type==='wire'?removeWire(sel.id):removeNode(sel.id);}
+  if((e.key==='Delete'||e.key==='Backspace')&&!typing){
+    if(selNodes.size){e.preventDefault();removeNodes([...selNodes]);}
+    else if(sel&&sel.type==='wire'){e.preventDefault();removeWire(sel.id);}
+  }
   if(e.key==='Escape'){if(projectModalEl){projectModalEl.remove();projectModalEl=null;return;}closeCtx();selectItem(null);}
 });
 window.addEventListener('keyup',e=>{
@@ -584,7 +641,7 @@ function fit(){
 el('clear').onclick=()=>{
   if(!state.nodes.length)return;
   pushHistory();
-  state.nodes=[];state.wires=[];sel=null;render();inspector();
+  state.nodes=[];state.wires=[];sel=null;selNodes=new Set();render();inspector();
   showToast('Zeichenfläche geleert · Strg+Z zum Rückgängigmachen');
 };
 
@@ -595,7 +652,7 @@ el('load').onclick=()=>{
   inp.onchange=()=>{const f=inp.files[0];const rd=new FileReader();
     rd.onload=()=>{try{const o=JSON.parse(rd.result);if(!o.nodes)throw 0;pushHistory();
       state=o;state.project=state.project||defaultProject();
-      sel=null;render();inspector();fit();showToast('Geladen');}catch(_){alert('Ungültige Datei.');}};
+      sel=null;selNodes=new Set();render();inspector();fit();showToast('Geladen');}catch(_){alert('Ungültige Datei.');}};
     rd.readAsText(f);};inp.click();
 };
 
