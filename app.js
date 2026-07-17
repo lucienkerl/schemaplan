@@ -527,10 +527,13 @@ SVG.addEventListener('pointermove',e=>{
     if(drag.group){
       const ddx=snap(p.x-drag.sx),ddy=snap(p.y-drag.sy);
       drag.ids.forEach(id=>{const nn=state.nodes.find(x=>x.id===id);const o=drag.orig.get(id);nn.x=o.x+ddx;nn.y=o.y+ddy;});
+      moved=true;render();gTemp.innerHTML='';
     }else{
-      const n=state.nodes.find(x=>x.id===drag.id);n.x=snap(p.x-drag.dx);n.y=snap(p.y-drag.dy);
+      const n=state.nodes.find(x=>x.id===drag.id),c=LIB[n.key];
+      const a=alignSnap(snap(p.x-drag.dx),snap(p.y-drag.dy),c.w,c.h,n.id);
+      n.x=a.x;n.y=a.y;moved=true;render();drawGuides(a.gx,a.gy);
     }
-    moved=true;render();
+    return;
   }else if(marquee){
     const p=toWorld(e.clientX,e.clientY);marquee.x1=p.x;marquee.y1=p.y;drawMarquee();
   }else if(wiring){
@@ -543,6 +546,38 @@ SVG.addEventListener('pointermove',e=>{
     view.x=panning.vx+(e.clientX-panning.x);view.y=panning.vy+(e.clientY-panning.y);applyView();
   }
 });
+// Smart alignment: snap a dragged node so its edges/centre line up with any
+// other node (within ALIGN_T world-px). Returns the adjusted x/y plus the
+// guide coordinates (gx = vertical line, gy = horizontal line) or null.
+const ALIGN_T=8;
+function alignSnap(nx,ny,w,h,exclId){
+  // each entry: [coord, isCenter]. Centre-to-centre alignment is preferred
+  // (that's what lines up the mid-side ports → straight horizontal/vertical wires).
+  const myX=[[nx,0],[nx+w/2,1],[nx+w,0]], myY=[[ny,0],[ny+h/2,1],[ny+h,0]];
+  let bx=null,by=null;
+  const consider=(best,d,at,centered)=>{
+    if(Math.abs(d)>ALIGN_T)return best;
+    const score=Math.abs(d)-(centered?ALIGN_T:0); // strongly prefer centre alignment (→ straight wires)
+    return (!best||score<best.score)?{d,at,score}:best;
+  };
+  for(const o of state.nodes){
+    if(o.id===exclId)continue;
+    const c=LIB[o.key];
+    const oX=[[o.x,0],[o.x+c.w/2,1],[o.x+c.w,0]], oY=[[o.y,0],[o.y+c.h/2,1],[o.y+c.h,0]];
+    for(const [m,mc] of myX)for(const [t,tc] of oX)bx=consider(bx,t-m,t,mc&&tc);
+    for(const [m,mc] of myY)for(const [t,tc] of oY)by=consider(by,t-m,t,mc&&tc);
+  }
+  return {x:nx+(bx?bx.d:0), y:ny+(by?by.d:0), gx:bx?bx.at:null, gy:by?by.at:null};
+}
+function drawGuides(gx,gy){
+  gTemp.innerHTML='';
+  if(gx==null&&gy==null)return;
+  const r=SVG.getBoundingClientRect();
+  const wl=(0-view.x)/view.k, wr=(r.width-view.x)/view.k, wt=(0-view.y)/view.k, wb=(r.height-view.y)/view.k;
+  const sw=1/view.k, da=(5/view.k)+' '+(4/view.k);
+  if(gx!=null)gTemp.appendChild(mk('line',{x1:gx,y1:wt,x2:gx,y2:wb,stroke:'#f06ea9','stroke-width':sw,'stroke-dasharray':da}));
+  if(gy!=null)gTemp.appendChild(mk('line',{x1:wl,y1:gy,x2:wr,y2:gy,stroke:'#f06ea9','stroke-width':sw,'stroke-dasharray':da}));
+}
 function drawMarquee(){
   const x=Math.min(marquee.x0,marquee.x1),y=Math.min(marquee.y0,marquee.y1),
     w=Math.abs(marquee.x1-marquee.x0),h=Math.abs(marquee.y1-marquee.y0);
@@ -576,6 +611,7 @@ SVG.addEventListener('pointerup',e=>{
     }
     marquee=null;
   }
+  if(drag)gTemp.innerHTML=''; // clear alignment guides
   drag=null;panning=null;SVG.classList.remove('panning');
   try{SVG.releasePointerCapture(e.pointerId);}catch(_){}
 });
