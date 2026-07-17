@@ -594,7 +594,7 @@ function serializeSVG(){
   for(const n of state.nodes){const c=LIB[n.key];x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+c.w);y1=Math.max(y1,n.y+c.h);}
   if(!isFinite(x0)){x0=0;y0=0;x1=400;y1=300;}
   const pad=48;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const dw=x1-x0,dh=y1-y0;
-  const TITLE_H=40,LEGEND_H=76,SCHRIFT_H=100;
+  const TITLE_H=40,LEGEND_H=76,SCHRIFT_H=120;
   const w=dw,h=TITLE_H+dh+LEGEND_H+SCHRIFT_H;
   const clone=VP.cloneNode(true);
   const tw=clone.querySelector('#tempwire');if(tw)clone.removeChild(tw);
