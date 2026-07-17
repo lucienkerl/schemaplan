@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-16-canvas-ux-design.md`
 
+**A note on line numbers:** Every `Files:` header and step below cites line numbers against the *original, unmodified* `app.js`/`index.html` (the state before this plan's Chunk 1 runs). Since chunks are applied in order and earlier chunks insert code, these absolute numbers drift as later chunks execute — e.g. by the time Chunk 4 runs, `render()` no longer starts at line 171. **Do not trust the numbers alone.** Every insertion/edit point is also anchored by a quoted snippet of the actual surrounding code (a "before" block to find-and-replace, or an explicit "right after `X`, right before `Y`" description) — locate the edit by that quoted content, and treat the line number as a hint for roughly where to look, not a precise address.
+
 ## Setup (do this once, keep running for the whole plan)
 
 - [ ] **Start a local static server from the repo root**
@@ -161,7 +163,8 @@ git commit -m "fix: add text/plain dataTransfer fallback for palette drag&drop"
 ## Chunk 2: Autosave & Wiederherstellung
 
 **Files:**
-- Modify: `app.js:171-217` (`render()`), `app.js:440-446` (`el('load')` handler), `app.js:492-497` (init block)
+- Insert: `app.js` after line 90 (new `scheduleAutosave()`/`loadAutosave()` functions)
+- Modify: `app.js:171-217` (`render()`), `app.js:492-497` (init block)
 
 ### Task 1: Add the autosave scheduler and loader
 
@@ -185,7 +188,7 @@ function loadAutosave(){
   if(!raw)return false;
   try{
     const o=JSON.parse(raw);
-    if(!o||!Array.isArray(o.nodes)||!Array.isArray(o.wires))return false;
+    if(!o||!Array.isArray(o.nodes)||!Array.isArray(o.wires)||typeof o.seq!=='number')return false;
     state=o;
     return true;
   }catch(_){return false;}
@@ -526,7 +529,7 @@ function loadAutosave(){
   if(!raw)return false;
   try{
     const o=JSON.parse(raw);
-    if(!o||!Array.isArray(o.nodes)||!Array.isArray(o.wires))return false;
+    if(!o||!Array.isArray(o.nodes)||!Array.isArray(o.wires)||typeof o.seq!=='number')return false;
     state=o;
     state.project=state.project||defaultProject();
     return true;
@@ -595,11 +598,13 @@ In `index.html`, add this new rule block right after the `.ctx hr` rule (line 10
   .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
   .modal .actions button{padding:8px 14px;border-radius:7px;border:1px solid var(--line2);
     background:transparent;color:var(--ink);cursor:pointer;font-size:12.5px}
-  .modal .actions button.primary{background:var(--accent);color:var(--accent-ink);
-    border-color:transparent;font-weight:600}
 ```
 
-- [ ] **Step 3: Add the modal open/save logic**
+(No `.primary` button variant — per Step 3 below, the panel has no "Speichern" action to highlight; fields save live, and the only action button is "Schließen".)
+
+- [ ] **Step 3: Add the modal open logic with live per-field updates**
+
+Per the spec (section 4, "UI"), project fields behave exactly like the inspector's fields: each keystroke updates `state.project` immediately, with `pushHistory()` fired once per field on its first edit (coalescing every further keystroke in that field into the same undo step), mirroring the existing `inp._touched` pattern in `inspector()` (`app.js:283-287`). There is no separate "Speichern" action — closing the panel just dismisses it.
 
 In `app.js`, add a new section right before `/* ---------------- export ---------------- */` (before line 448):
 
@@ -609,47 +614,44 @@ function openProjectModal(){
   const bd=document.createElement('div');bd.className='modal-backdrop';
   const p=state.project;
   const esc=(s)=>(s||'').replace(/"/g,'&quot;');
+  const fields=[
+    ['betreiberName','Betreiber – Name'],
+    ['betreiberAdresse','Betreiber – Adresse'],
+    ['standortAdresse','Anlagenstandort – Adresse'],
+    ['erstellerFirma','Anlagenerrichter – Firma'],
+    ['erstellerOrt','Anlagenerrichter – Ort'],
+    ['datum','Datum'],
+  ];
   bd.innerHTML=`<div class="modal">
     <h2>Projektdaten</h2>
-    <div class="field"><label>Betreiber – Name</label><input id="pf-betreiberName" value="${esc(p.betreiberName)}"></div>
-    <div class="field"><label>Betreiber – Adresse</label><input id="pf-betreiberAdresse" value="${esc(p.betreiberAdresse)}"></div>
-    <div class="field"><label>Anlagenstandort – Adresse</label><input id="pf-standortAdresse" value="${esc(p.standortAdresse)}"></div>
-    <div class="field"><label>Anlagenerrichter – Firma</label><input id="pf-erstellerFirma" value="${esc(p.erstellerFirma)}"></div>
-    <div class="field"><label>Anlagenerrichter – Ort</label><input id="pf-erstellerOrt" value="${esc(p.erstellerOrt)}"></div>
-    <div class="field"><label>Datum</label><input id="pf-datum" value="${esc(p.datum)}"></div>
-    <div class="actions">
-      <button id="pf-cancel">Abbrechen</button>
-      <button class="primary" id="pf-save">Speichern</button>
-    </div>
+    ${fields.map(([k,label])=>
+      `<div class="field"><label>${label}</label><input data-k="${k}" value="${esc(p[k])}"></div>`
+    ).join('')}
+    <div class="actions"><button id="pf-close">Schließen</button></div>
   </div>`;
   document.body.appendChild(bd);
-  const dEl=bd.querySelector('#pf-datum');
-  if(!dEl.value){const d=new Date();dEl.value=d.toISOString().slice(0,10);}
-  bd.addEventListener('pointerdown',e=>{if(e.target===bd)bd.remove();});
-  bd.querySelector('#pf-cancel').onclick=()=>bd.remove();
-  bd.querySelector('#pf-save').onclick=()=>{
+  bd.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',()=>{
+    if(!inp._touched){pushHistory();inp._touched=true;}
+    state.project[inp.dataset.k]=inp.value;render();
+  }));
+  const dEl=bd.querySelector('input[data-k="datum"]');
+  if(!dEl.value){
     pushHistory();
-    state.project={
-      betreiberName:bd.querySelector('#pf-betreiberName').value,
-      betreiberAdresse:bd.querySelector('#pf-betreiberAdresse').value,
-      standortAdresse:bd.querySelector('#pf-standortAdresse').value,
-      erstellerFirma:bd.querySelector('#pf-erstellerFirma').value,
-      erstellerOrt:bd.querySelector('#pf-erstellerOrt').value,
-      datum:dEl.value,
-    };
+    dEl.value=new Date().toISOString().slice(0,10);
+    state.project.datum=dEl.value;
     render();
-    bd.remove();
-    showToast('Projektdaten gespeichert');
-  };
+  }
+  bd.addEventListener('pointerdown',e=>{if(e.target===bd)bd.remove();});
+  bd.querySelector('#pf-close').onclick=()=>bd.remove();
 }
 el('project').onclick=openProjectModal;
 ```
 
-Note: calling `render()` after saving (instead of calling `scheduleAutosave()` directly) keeps this consistent with every other state mutation in the app and automatically triggers the Chunk 2 autosave hook — no separate autosave call needed here.
+The date auto-fill writes straight to `state.project.datum` (via its own `pushHistory()`) rather than only pre-filling the input's displayed value, so a user who opens the panel and closes it again without touching any field still gets today's date captured in the export — not a blank Schriftfeld date.
 
-- [ ] **Step 4: Verify the panel opens, saves, and persists**
+- [ ] **Step 4: Verify live updates, persistence, and undo**
 
-In the browser: click "Projekt", fill in "Betreiber – Name" with `Max Mustermann` and "Datum" is pre-filled with today's date, click "Speichern". Expected: toast "Projektdaten gespeichert", modal closes. Reload the page. Expected: click "Projekt" again shows `Max Mustermann` still filled in (autosave round-trip). Press `Strg+Z`. Expected: the project-data change is undoable (toast "Rückgängig").
+In the browser: click "Projekt". Expected: "Datum" is already pre-filled with today's date. Type `Max Mustermann` into "Betreiber – Name" character by character — do not click anything else. Reload the page (`mcp__Claude_Browser__navigate`) without closing the panel first. Expected: after reload, click "Projekt" again — `Max Mustermann` is still there (autosave picked up the live edits). Reopen the panel, type into "Betreiber – Adresse", then press `Strg+Z`. Expected: the entire typed string in that field is undone in a single step (toast "Rückgängig"), not one undo per keystroke.
 
 - [ ] **Step 5: Commit**
 
@@ -665,7 +667,7 @@ git commit -m "feat: add Projektdaten panel for Netze-BW submission metadata"
 In `app.js`, add these two functions right before `serializeSVG()` (before line 449):
 
 ```js
-function legendSVG(w){
+function legendSVG(){
   const rows=[['AC-Leitung',KINDCOL.ac],['DC-Leitung',KINDCOL.dc],['Signal / Steuerung',KINDCOL.sig]];
   let out='<g font-family="ui-monospace,monospace" font-size="11" fill="#8896a6">';
   rows.forEach((r,i)=>{
@@ -731,7 +733,7 @@ function serializeSVG(){
   for(const n of state.nodes){const c=LIB[n.key];x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+c.w);y1=Math.max(y1,n.y+c.h);}
   if(!isFinite(x0)){x0=0;y0=0;x1=400;y1=300;}
   const pad=48;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const dw=x1-x0,dh=y1-y0;
-  const TITLE_H=40,LEGEND_H=76,SCHRIFT_H=96;
+  const TITLE_H=40,LEGEND_H=76,SCHRIFT_H=100;
   const w=dw,h=TITLE_H+dh+LEGEND_H+SCHRIFT_H;
   const clone=VP.cloneNode(true);
   const tw=clone.querySelector('#tempwire');if(tw)clone.removeChild(tw);
@@ -740,7 +742,7 @@ function serializeSVG(){
   clone.setAttribute('transform',`translate(${-x0},${-y0+TITLE_H})`);
   const css=document.querySelector('style').textContent;
   const title=`<text x="${w/2}" y="26" text-anchor="middle" font-family="Inter,sans-serif" font-size="15" font-weight="600" fill="#e8eef5">Übersichtsschaltplan nach VDE-AR-N 4105</text>`;
-  const legend=`<g transform="translate(16,${TITLE_H+dh+16})">${legendSVG(dw-32)}</g>`;
+  const legend=`<g transform="translate(16,${TITLE_H+dh+16})">${legendSVG()}</g>`;
   const schrift=`<g transform="translate(0,${TITLE_H+dh+LEGEND_H})">${schriftfeldSVG(w,SCHRIFT_H)}</g>`;
   const svg=`<svg xmlns="${SVGNS}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
     +`<style>${css}</style>`
@@ -756,7 +758,7 @@ In the browser: fill in the Projekt panel (Task 2) with sample data, click "SVG"
 
 - [ ] **Step 4: Verify PNG export**
 
-Click "PNG". Expected: `schaltplan.png` downloads without a JS error (check via `mcp__Claude_Browser__read_console_messages`), and its dimensions are taller than before this chunk (title+legend+Schriftfeld add ~212px). Open the PNG (e.g. via the `Read` tool, which can display images) and visually confirm the title and Schriftfeld are visible and legible.
+Click "PNG". Expected: `schaltplan.png` downloads without a JS error (check via `mcp__Claude_Browser__read_console_messages`), and its dimensions are taller than before this chunk (title+legend+Schriftfeld add ~216px). Open the PNG (e.g. via the `Read` tool, which can display images) and visually confirm the title and Schriftfeld are visible and legible.
 
 - [ ] **Step 5: Commit**
 
