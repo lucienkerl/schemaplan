@@ -259,19 +259,21 @@ function render(){
 
     g.appendChild(mk('rect',{class:'node-body',width:c.w,height:c.h,rx:7,fill:'#141922',
       stroke:c.color,'stroke-width':strokeW}));
-    g.appendChild(mk('rect',{width:c.w,height:3,rx:1.5,fill:c.color,opacity:.9}));
 
-    const ic=mk('g',{transform:'translate(6,6) scale(0.42)',stroke:c.color,fill:'none','stroke-width':1.8,
-      'stroke-linecap':'round','stroke-linejoin':'round'});
+    // schematic symbol centered in the body (Phase 2 replaces ICONS with fuller symbols)
+    const isc=(Math.min(c.w,c.h)*0.5)/24, iw=24*isc;
+    const ic=mk('g',{transform:`translate(${c.w/2-iw/2},${c.h/2-iw/2}) scale(${isc})`,
+      stroke:c.color,fill:'none','stroke-width':1.7/isc,'stroke-linecap':'round','stroke-linejoin':'round'});
     ic.style.pointerEvents='none';
     ic.innerHTML=ICONS[n.key];
     g.appendChild(ic);
 
-    const t1=mk('text',{class:'node-label',x:c.w/2,y:19,'text-anchor':'middle'});
+    // name label ABOVE the box, value lines BELOW it (keeps text out of the symbol)
+    const t1=mk('text',{class:'node-name',x:c.w/2,y:-7,'text-anchor':'middle'});
     t1.textContent=n.fields.name||c.name;g.appendChild(t1);
     const subs=c.fields.filter(f=>f[0]!=='name').map(f=>n.fields[f[0]]).filter(v=>v&&v.trim());
     subs.slice(0,2).forEach((s,i)=>{
-      const t=mk('text',{class:'node-sub',x:c.w/2,y:34+i*11,'text-anchor':'middle'});
+      const t=mk('text',{class:'node-val',x:c.w/2,y:c.h+13+i*11,'text-anchor':'middle'});
       t.textContent=s;g.appendChild(t);
     });
 
