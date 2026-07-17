@@ -233,6 +233,12 @@ function render(){
       stroke:c.color,'stroke-width':strokeW}));
     g.appendChild(mk('rect',{width:c.w,height:3,rx:1.5,fill:c.color,opacity:.9}));
 
+    const ic=mk('g',{transform:'translate(6,6) scale(0.42)',stroke:c.color,fill:'none','stroke-width':1.8,
+      'stroke-linecap':'round','stroke-linejoin':'round'});
+    ic.style.pointerEvents='none';
+    ic.innerHTML=ICONS[n.key];
+    g.appendChild(ic);
+
     const t1=mk('text',{class:'node-label',x:c.w/2,y:19,'text-anchor':'middle'});
     t1.textContent=n.fields.name||c.name;g.appendChild(t1);
     const subs=c.fields.filter(f=>f[0]!=='name').map(f=>n.fields[f[0]]).filter(v=>v&&v.trim());
