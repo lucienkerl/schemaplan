@@ -23,7 +23,8 @@
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
     font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
   button{font-family:inherit}
-  #app{display:grid;grid-template-columns:224px 1fr 288px;grid-template-rows:52px 1fr 26px;height:100vh}
+  #app{display:grid;grid-template-columns:224px 1fr 288px;grid-template-rows:52px 1fr 26px;height:100vh;
+    user-select:none;-webkit-user-select:none;-moz-user-select:none}
 
   /* ---- header ---- */
   header{grid-column:1/4;display:flex;align-items:center;gap:12px;padding:0 16px;
@@ -54,6 +55,7 @@
   .search input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:7px;
     color:var(--ink);font-size:12.5px;padding:8px 10px 8px 30px;font-family:var(--sans)}
   .search input:focus{outline:none;border-color:var(--accent)}
+  .search input{user-select:text;-webkit-user-select:text}
   .search svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);
     width:14px;height:14px;stroke:var(--faint);fill:none;stroke-width:1.7}
   .pgroup{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);
@@ -61,7 +63,7 @@
   .pgroup:first-of-type{margin-top:4px}
   .pitem{display:flex;align-items:center;gap:9px;padding:8px 9px;margin-bottom:4px;border-radius:7px;
     background:var(--panel2);border:1px solid transparent;cursor:grab;font-size:12.5px;user-select:none;
-    transition:border-color .12s,transform .06s}
+    transition:border-color .12s,transform .06s;-webkit-user-drag:element}
   .pitem:hover{border-color:var(--line2);transform:translateX(2px)}
   .pitem:active{cursor:grabbing;transform:scale(.98)}
   .dot{width:8px;height:8px;border-radius:50%;flex:none;box-shadow:0 0 0 3px rgba(255,255,255,.04)}
@@ -111,6 +113,7 @@
   .field input,.field select{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);
     border-radius:6px;padding:8px 9px;font-size:12.5px;font-family:var(--sans);transition:border-color .12s}
   .field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+  .field input,.field select{user-select:text;-webkit-user-select:text}
   .empty{color:var(--dim);font-size:12.5px;line-height:1.7}
   .empty .ico{width:40px;height:40px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;margin-bottom:12px}
   .empty .ico svg{width:20px;height:20px;stroke:var(--faint);fill:none;stroke-width:1.6}
