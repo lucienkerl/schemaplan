@@ -73,9 +73,10 @@
 
   /* ---- stage ---- */
   .stage{position:relative;overflow:hidden;background:var(--bg)}
-  #svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+  #svg{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;cursor:grab}
   #svg.panning{cursor:grabbing}
   #svg.panready{cursor:grab}
+  g.node{cursor:move}
   .hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:var(--dim);
     font-size:13px;text-align:center;pointer-events:none;line-height:2;max-width:420px}
   .hint b{color:var(--ink)}

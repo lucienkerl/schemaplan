@@ -480,7 +480,10 @@ SVG.addEventListener('pointerdown',e=>{
     drag={id:n.id,dx:p.x-n.x,dy:p.y-n.y,started:false};moved=false;
     try{SVG.setPointerCapture(e.pointerId);}catch(_){}return;
   }
-  selectItem(null);
+  // empty canvas: left-drag pans the view; a plain click (no drag) deselects
+  panning={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y,click:true,moved:false};
+  SVG.classList.add('panning');
+  try{SVG.setPointerCapture(e.pointerId);}catch(_){}
 });
 SVG.addEventListener('pointermove',e=>{
   if(drag){
@@ -495,6 +498,7 @@ SVG.addEventListener('pointermove',e=>{
     gTemp.appendChild(mk('path',{d:wirePath(pa,{x:p.x,y:p.y,side:'l'}),fill:'none',
       stroke:KINDCOL[pa.kind]||'#8896a6','stroke-width':2,'stroke-dasharray':'5 4','stroke-linecap':'round'}));
   }else if(panning){
+    if(Math.abs(e.clientX-panning.x)+Math.abs(e.clientY-panning.y)>3)panning.moved=true;
     view.x=panning.vx+(e.clientX-panning.x);view.y=panning.vy+(e.clientY-panning.y);applyView();
   }
 });
@@ -510,6 +514,8 @@ SVG.addEventListener('pointerup',e=>{
     }
     gTemp.innerHTML='';wiring=null;render();
   }
+  // a click on empty canvas that didn't turn into a pan → deselect
+  if(panning&&panning.click&&!panning.moved)selectItem(null);
   drag=null;panning=null;SVG.classList.remove('panning');
   try{SVG.releasePointerCapture(e.pointerId);}catch(_){}
 });
