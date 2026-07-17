@@ -91,7 +91,9 @@ Object.keys(LIB).forEach(k=>{if(!ICONS[k])console.warn('Kein Icon für Bauteilty
 const KINDCOL={ac:'#e5ab45',dc:'#4aa8ec',sig:'#6fdc8c'};
 
 /* ---------------- state ---------------- */
-let state={nodes:[],wires:[],seq:1};
+function defaultProject(){return {betreiberName:'',betreiberAdresse:'',standortAdresse:'',
+  erstellerFirma:'',erstellerOrt:'',datum:''};}
+let state={nodes:[],wires:[],seq:1,project:defaultProject()};
 let view={x:120,y:80,k:1};
 let sel=null;        // {type:'node'|'wire', id}
 let history=[], future=[];
@@ -101,9 +103,18 @@ const SVG=el('svg'), VP=el('viewport'), gNodes=el('nodes'), gWires=el('wires'), 
 const hint=el('hint'), toast=el('toast');
 
 /* ---------------- history ---------------- */
-function snapshot(){return JSON.stringify({nodes:state.nodes,wires:state.wires,seq:state.seq});}
+function snapshot(){return JSON.stringify({nodes:state.nodes,wires:state.wires,seq:state.seq,project:state.project});}
 function pushHistory(){history.push(snapshot());if(history.length>100)history.shift();future=[];updateUndo();}
-function restore(s){const o=JSON.parse(s);state.nodes=o.nodes;state.wires=o.wires;state.seq=o.seq;sel=null;render();inspector();}
+let projectModalEl=null;
+function syncProjectModal(){
+  if(!projectModalEl)return;
+  projectModalEl.querySelectorAll('input').forEach(inp=>{
+    inp.value=state.project[inp.dataset.k]||'';
+    inp._touched=false;
+  });
+}
+function restore(s){const o=JSON.parse(s);state.nodes=o.nodes;state.wires=o.wires;state.seq=o.seq;
+  state.project=o.project||defaultProject();sel=null;render();inspector();syncProjectModal();}
 function undo(){if(!history.length)return;future.push(snapshot());restore(history.pop());updateUndo();showToast('Rückgängig');}
 function redo(){if(!future.length)return;history.push(snapshot());restore(future.pop());updateUndo();showToast('Wiederholt');}
 function updateUndo(){el('undo').disabled=!history.length;el('redo').disabled=!future.length;}
@@ -128,6 +139,7 @@ function loadAutosave(){
     if(!o||!Array.isArray(o.nodes)||!Array.isArray(o.wires)||typeof o.seq!=='number')return false;
     if(!o.nodes.every(n=>Object.hasOwn(LIB,n.key)&&n.fields&&typeof n.fields==='object'&&Object.values(n.fields).every(v=>v==null||typeof v==='string')))return false;
     state=o;
+    state.project=state.project||defaultProject();
     return true;
   }catch(_){return false;}
 }
@@ -498,7 +510,8 @@ el('load').onclick=()=>{
   const inp=document.createElement('input');inp.type='file';inp.accept='.json';
   inp.onchange=()=>{const f=inp.files[0];const rd=new FileReader();
     rd.onload=()=>{try{const o=JSON.parse(rd.result);if(!o.nodes)throw 0;pushHistory();
-      state=o;sel=null;render();inspector();fit();showToast('Geladen');}catch(_){alert('Ungültige Datei.');}};
+      state=o;state.project=state.project||defaultProject();
+      sel=null;render();inspector();fit();showToast('Geladen');}catch(_){alert('Ungültige Datei.');}};
     rd.readAsText(f);};inp.click();
 };
 
