@@ -23,7 +23,8 @@
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
     font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
   button{font-family:inherit}
-  #app{display:grid;grid-template-columns:224px 1fr 288px;grid-template-rows:52px 1fr 26px;height:100vh}
+  #app{display:grid;grid-template-columns:224px 1fr 288px;grid-template-rows:52px 1fr 26px;height:100vh;
+    user-select:none;-webkit-user-select:none;-moz-user-select:none}
 
   /* ---- header ---- */
   header{grid-column:1/4;display:flex;align-items:center;gap:12px;padding:0 16px;
@@ -54,6 +55,7 @@
   .search input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:7px;
     color:var(--ink);font-size:12.5px;padding:8px 10px 8px 30px;font-family:var(--sans)}
   .search input:focus{outline:none;border-color:var(--accent)}
+  .search input{user-select:text;-webkit-user-select:text}
   .search svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);
     width:14px;height:14px;stroke:var(--faint);fill:none;stroke-width:1.7}
   .pgroup{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);
@@ -61,10 +63,13 @@
   .pgroup:first-of-type{margin-top:4px}
   .pitem{display:flex;align-items:center;gap:9px;padding:8px 9px;margin-bottom:4px;border-radius:7px;
     background:var(--panel2);border:1px solid transparent;cursor:grab;font-size:12.5px;user-select:none;
-    transition:border-color .12s,transform .06s}
+    transition:border-color .12s,transform .06s;-webkit-user-drag:element}
   .pitem:hover{border-color:var(--line2);transform:translateX(2px)}
   .pitem:active{cursor:grabbing;transform:scale(.98)}
   .dot{width:8px;height:8px;border-radius:50%;flex:none;box-shadow:0 0 0 3px rgba(255,255,255,.04)}
+  .picon{width:22px;height:22px;border-radius:6px;flex:none;display:grid;place-items:center}
+  .picon svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;
+    stroke-linecap:round;stroke-linejoin:round}
 
   /* ---- stage ---- */
   .stage{position:relative;overflow:hidden;background:var(--bg)}
@@ -99,6 +104,16 @@
   .ctx svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .ctx hr{border:none;border-top:1px solid var(--line);margin:4px 6px}
 
+  /* modal */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;
+    display:flex;align-items:center;justify-content:center}
+  .modal{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;box-shadow:var(--shadow);
+    padding:18px;width:360px;max-width:90vw}
+  .modal h2{font-size:13px;font-weight:600;margin:0 0 14px;color:var(--ink)}
+  .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+  .modal .actions button{padding:8px 14px;border-radius:7px;border:1px solid var(--line2);
+    background:transparent;color:var(--ink);cursor:pointer;font-size:12.5px}
+
   /* ---- inspector ---- */
   aside.inspector{background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;padding:14px}
   .inspector h2{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);
@@ -111,6 +126,8 @@
   .field input,.field select{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);
     border-radius:6px;padding:8px 9px;font-size:12.5px;font-family:var(--sans);transition:border-color .12s}
   .field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+  .field input::placeholder{color:var(--faint);opacity:1}
+  .field input,.field select{user-select:text;-webkit-user-select:text}
   .empty{color:var(--dim);font-size:12.5px;line-height:1.7}
   .empty .ico{width:40px;height:40px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;margin-bottom:12px}
   .empty .ico svg{width:20px;height:20px;stroke:var(--faint);fill:none;stroke-width:1.6}
@@ -136,7 +153,7 @@
   /* svg element classes */
   .node-label{font-family:var(--sans);font-size:11.5px;font-weight:600;fill:var(--ink)}
   .node-sub{font-family:var(--mono);font-size:8.5px;fill:var(--dim)}
-  .port-label{font-family:var(--mono);font-size:7.5px;fill:var(--faint)}
+  .port-label{font-family:var(--mono);font-size:7.5px;fill:#93a0b0}
   .node-body{transition:filter .12s}
   g.node.sel .node-body{filter:drop-shadow(0 0 0 rgba(0,0,0,0))}
   .toast{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);
@@ -164,6 +181,8 @@
     <button class="tool ghost" id="fit" title="Ansicht einpassen"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>Einpassen</button>
     <button class="tool ghost" id="clear" title="Alles löschen"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Leeren</button>
     <div class="spacer"></div>
+    <button class="tool ghost" id="project"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h4"/></svg>Projekt</button>
+    <div class="sep"></div>
     <button class="tool ghost" id="save"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>Speichern</button>
     <button class="tool ghost" id="load"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>Laden</button>
     <div class="sep"></div>

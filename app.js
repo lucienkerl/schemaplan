@@ -67,10 +67,33 @@ const LIB={
     fields:[['name','Bezeichnung','Steuerbox'],['note','FRE / Node','']],
     ports:[{id:'sig',label:'Steuer',side:'l',kind:'sig'},{id:'net',label:'FNN',side:'t',kind:'sig'}]},
 };
+const ICONS={
+  netz:'<path d="M12 2l7 6-2 3H7L5 8z"/><path d="M12 11v11M8 22h8M9 16h6"/>',
+  hak:'<rect x="8" y="4" width="8" height="13" rx="1.5"/><path d="M12 17v3M9 22h6"/>',
+  sls:'<path d="M12 3v7"/><path d="M7.5 8a6 6 0 1 0 9 0"/>',
+  zaehler:'<circle cx="12" cy="13" r="8"/><path d="M12 13l3.5-3.5M8 6h8"/>',
+  gridmeter:'<circle cx="12" cy="13" r="8"/><path d="M9 13h6M12 10l-3 3 3 3"/>',
+  uv:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 16h16M10 4v16"/>',
+  pvwr:'<rect x="4" y="7" width="16" height="11" rx="2"/><path d="M7 13c1-2.5 2-2.5 3 0s2 2.5 3 0 2-2.5 3 0"/>',
+  pvgen:'<rect x="4" y="6" width="16" height="12" rx="1"/><path d="M4 10.5h16M4 15h16M10.5 6v12M15.5 6v12"/>',
+  mppt:'<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M12 8v6"/><path d="M9 11l3 3 3-3"/>',
+  multi:'<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 10l-2.5 2 2.5 2"/><path d="M15 10l2.5 2-2.5 2"/>',
+  battwr:'<rect x="4" y="8" width="13" height="9" rx="1.5"/><path d="M17 11v3"/><path d="M8 8v-2M12 8v-2"/>',
+  battery:'<rect x="3" y="8" width="16" height="9" rx="1.5"/><path d="M19 11v3"/><path d="M7 8v9M11 8v9M15 8v9"/>',
+  dcbus:'<path d="M3 12h18"/><path d="M7 8v8M12 8v8M17 8v8"/>',
+  cerbo:'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4"/>',
+  wallbox:'<rect x="3" y="9" width="13" height="8" rx="2"/><circle cx="7" cy="19" r="1.6"/><circle cx="15" cy="19" r="1.6"/><path d="M16 12h3l2 3v2h-2"/>',
+  load:'<circle cx="12" cy="12" r="8"/><path d="M9 10v4M15 10v4"/><path d="M9 15a3 3 0 0 0 6 0"/>',
+  backup:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M13 7l-4.5 6.5H12L11 20l5.5-7.5H13z"/>',
+  steuerbox:'<circle cx="12" cy="12" r="8"/><path d="M12 12l3.5-2.5"/><circle cx="12" cy="12" r="1.6"/>',
+};
+Object.keys(LIB).forEach(k=>{if(!ICONS[k])console.warn('Kein Icon für Bauteiltyp:',k);});
 const KINDCOL={ac:'#e5ab45',dc:'#4aa8ec',sig:'#6fdc8c'};
 
 /* ---------------- state ---------------- */
-let state={nodes:[],wires:[],seq:1};
+function defaultProject(){return {betreiberName:'',betreiberAdresse:'',standortAdresse:'',
+  erstellerFirma:'',erstellerOrt:'',datum:''};}
+let state={nodes:[],wires:[],seq:1,project:defaultProject()};
 let view={x:120,y:80,k:1};
 let sel=null;        // {type:'node'|'wire', id}
 let history=[], future=[];
@@ -80,14 +103,46 @@ const SVG=el('svg'), VP=el('viewport'), gNodes=el('nodes'), gWires=el('wires'), 
 const hint=el('hint'), toast=el('toast');
 
 /* ---------------- history ---------------- */
-function snapshot(){return JSON.stringify({nodes:state.nodes,wires:state.wires,seq:state.seq});}
+function snapshot(){return JSON.stringify({nodes:state.nodes,wires:state.wires,seq:state.seq,project:state.project});}
 function pushHistory(){history.push(snapshot());if(history.length>100)history.shift();future=[];updateUndo();}
-function restore(s){const o=JSON.parse(s);state.nodes=o.nodes;state.wires=o.wires;state.seq=o.seq;sel=null;render();inspector();}
+let projectModalEl=null;
+function syncProjectModal(){
+  if(!projectModalEl)return;
+  projectModalEl.querySelectorAll('input').forEach(inp=>{
+    inp.value=state.project[inp.dataset.k]||'';
+    inp._touched=false;
+  });
+}
+function restore(s){const o=JSON.parse(s);state.nodes=o.nodes;state.wires=o.wires;state.seq=o.seq;
+  state.project=o.project||defaultProject();sel=null;render();inspector();syncProjectModal();}
 function undo(){if(!history.length)return;future.push(snapshot());restore(history.pop());updateUndo();showToast('Rückgängig');}
 function redo(){if(!future.length)return;history.push(snapshot());restore(future.pop());updateUndo();showToast('Wiederholt');}
 function updateUndo(){el('undo').disabled=!history.length;el('redo').disabled=!future.length;}
 el('undo').onclick=undo;
 el('redo').onclick=redo;
+
+/* ---------------- autosave ---------------- */
+const AUTOSAVE_KEY='schemaplan.autosave.v1';
+let autosaveT;
+function scheduleAutosave(){
+  clearTimeout(autosaveT);
+  autosaveT=setTimeout(()=>{
+    try{localStorage.setItem(AUTOSAVE_KEY,JSON.stringify(state));}catch(_){}
+  },500);
+}
+function loadAutosave(){
+  let raw;
+  try{raw=localStorage.getItem(AUTOSAVE_KEY);}catch(_){return false;}
+  if(!raw)return false;
+  try{
+    const o=JSON.parse(raw);
+    if(!o||!Array.isArray(o.nodes)||!Array.isArray(o.wires)||typeof o.seq!=='number')return false;
+    if(!o.nodes.every(n=>Object.hasOwn(LIB,n.key)&&n.fields&&typeof n.fields==='object'&&Object.values(n.fields).every(v=>v==null||typeof v==='string')))return false;
+    state=o;
+    state.project=state.project||defaultProject();
+    return true;
+  }catch(_){return false;}
+}
 
 /* ---------------- toast ---------------- */
 let toastT;
@@ -107,7 +162,7 @@ function buildPalette(filter=''){
     const h=document.createElement('div');h.className='pgroup';h.textContent=g;list.appendChild(h);
     for(const [key,c] of items){
       const d=document.createElement('div');d.className='pitem';d.draggable=true;d.dataset.key=key;
-      d.innerHTML=`<span class="dot" style="background:${c.color}"></span>${c.name}`;
+      d.innerHTML=`<span class="picon" style="background:${c.color}22;color:${c.color}"><svg viewBox="0 0 24 24">${ICONS[key]}</svg></span>${c.name}`;
       d.addEventListener('click',()=>addNode(key));
       d.addEventListener('dragstart',e=>e.dataTransfer.setData('key',key));
       list.appendChild(d);
@@ -125,11 +180,20 @@ function applyView(){VP.setAttribute('transform',`translate(${view.x},${view.y})
 const snap=(v)=>Math.round(v/12)*12;
 
 /* ---------------- add / remove ---------------- */
+function fillFields(c){
+  const fields={};
+  c.fields.forEach(f=>{fields[f[0]]=f[2].startsWith('__')?'':f[2];});
+  return fields;
+}
 function addNode(key,wx,wy){
   pushHistory();
   const c=LIB[key];
-  if(wx==null){const r=SVG.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);wx=p.x-c.w/2;wy=p.y-c.h/2;}
-  const fields={};c.fields.forEach(f=>fields[f[0]]=f[2]);
+  if(wx==null){
+    const r=SVG.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);
+    wx=p.x-c.w/2+addOffset;wy=p.y-c.h/2+addOffset;
+    addOffset=(addOffset+18)%108;
+  }
+  const fields=fillFields(c);
   const n={id:'n'+(state.seq++),key,x:snap(wx),y:snap(wy),fields};
   state.nodes.push(n);sel={type:'node',id:n.id};render();inspector();
   hint.style.display='none';showToast(c.name+' hinzugefügt');
@@ -169,13 +233,15 @@ function portUsed(nodeId,portId){return state.wires.some(w=>(w.from.node===nodeI
 function mk(tag,attrs){const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
 
 function render(){
+  scheduleAutosave();
   // wires first (under nodes)
   renderWires();
   // nodes
   gNodes.innerHTML='';
   for(const n of state.nodes){
     const c=LIB[n.key];
-    const g=mk('g',{transform:`translate(${n.x},${n.y})`,class:'node'});
+    const g=mk('g',{transform:`translate(${n.x},${n.y})`,class:'node',tabindex:'0',role:'group',
+      'aria-label':(n.fields.name||c.name)});
     g.dataset.id=n.id;
     if(sel&&sel.type==='node'&&sel.id===n.id)g.classList.add('sel');
     const strokeW=(sel&&sel.type==='node'&&sel.id===n.id)?2.4:1.4;
@@ -183,6 +249,12 @@ function render(){
     g.appendChild(mk('rect',{class:'node-body',width:c.w,height:c.h,rx:7,fill:'#141922',
       stroke:c.color,'stroke-width':strokeW}));
     g.appendChild(mk('rect',{width:c.w,height:3,rx:1.5,fill:c.color,opacity:.9}));
+
+    const ic=mk('g',{transform:'translate(6,6) scale(0.42)',stroke:c.color,fill:'none','stroke-width':1.8,
+      'stroke-linecap':'round','stroke-linejoin':'round'});
+    ic.style.pointerEvents='none';
+    ic.innerHTML=ICONS[n.key];
+    g.appendChild(ic);
 
     const t1=mk('text',{class:'node-label',x:c.w/2,y:19,'text-anchor':'middle'});
     t1.textContent=n.fields.name||c.name;g.appendChild(t1);
@@ -276,7 +348,8 @@ function inspector(){
   const c=LIB[n.key];
   let html=`<div class="insp-head"><span class="dot" style="background:${c.color}"></span><span>${c.name}</span></div>`;
   for(const f of c.fields){
-    html+=`<div class="field"><label>${f[1]}</label><input data-k="${f[0]}" value="${(n.fields[f[0]]||'').replace(/"/g,'&quot;')}"></div>`;
+    const ph=f[2].startsWith('__')?f[2].replace(/"/g,'&quot;'):'';
+    html+=`<div class="field"><label>${f[1]}</label><input data-k="${f[0]}" placeholder="${ph}" value="${(n.fields[f[0]]||'').replace(/"/g,'&quot;')}"></div>`;
   }
   html+=`<button class="del" id="delnode"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Baustein löschen</button>`;
   body.innerHTML=html;
@@ -287,7 +360,7 @@ function inspector(){
   }));
   el('delnode').onclick=()=>removeNode(n.id);
 }
-function selectItem(s){sel=s;render();inspector();}
+function selectItem(s){sel=s;arrowMoveStarted=false;render();inspector();}
 
 /* ---------------- context menu ---------------- */
 let ctxEl=null;
@@ -327,11 +400,12 @@ function dupNode(id){const n=state.nodes.find(x=>x.id===id);if(!n)return;pushHis
 document.addEventListener('pointerdown',e=>{if(ctxEl&&!ctxEl.contains(e.target))closeCtx();},true);
 
 /* ---------------- interaction ---------------- */
-let drag=null,wiring=null,panning=null,space=false,moved=false;
+let drag=null,wiring=null,panning=null,space=false,moved=false,addOffset=0,arrowMoveStarted=false,arrowMoveTimer=null;
 
 SVG.addEventListener('pointerdown',e=>{
   closeCtx();
   if(e.button===2)return; // context handled separately
+  e.preventDefault();
   const portEl=e.target.closest('.port');
   const wireEl=e.target.closest('.wirehit');
   const nodeEl=e.target.closest('#nodes g');
@@ -404,11 +478,29 @@ window.addEventListener('keydown',e=>{
   if(e.code==='Space'&&!typing){space=true;SVG.classList.add('panready');}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return;}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return;}
+  if(e.key.startsWith('Arrow')&&sel&&sel.type==='node'&&!typing){
+    e.preventDefault();
+    const n=state.nodes.find(x=>x.id===sel.id);if(!n)return;
+    if(!arrowMoveStarted){pushHistory();arrowMoveStarted=true;}
+    clearTimeout(arrowMoveTimer);
+    arrowMoveTimer=setTimeout(()=>{arrowMoveStarted=false;},500);
+    const step=12;
+    if(e.key==='ArrowUp')n.y-=step;
+    if(e.key==='ArrowDown')n.y+=step;
+    if(e.key==='ArrowLeft')n.x-=step;
+    if(e.key==='ArrowRight')n.x+=step;
+    render();
+    const gEl=gNodes.querySelector(`g[data-id="${n.id}"]`);
+    if(gEl)gEl.focus();
+    return;
+  }
   if((e.key==='Delete'||e.key==='Backspace')&&sel&&!typing){e.preventDefault();
     sel.type==='wire'?removeWire(sel.id):removeNode(sel.id);}
-  if(e.key==='Escape'){closeCtx();selectItem(null);}
+  if(e.key==='Escape'){if(projectModalEl){projectModalEl.remove();projectModalEl=null;return;}closeCtx();selectItem(null);}
 });
-window.addEventListener('keyup',e=>{if(e.code==='Space'){space=false;SVG.classList.remove('panready');}});
+window.addEventListener('keyup',e=>{
+  if(e.code==='Space'){space=false;SVG.classList.remove('panready');}
+});
 
 /* drop from palette */
 const stage=el('stage');
@@ -431,8 +523,9 @@ function fit(){
 }
 el('clear').onclick=()=>{
   if(!state.nodes.length)return;
-  if(confirm('Alle Bausteine und Verbindungen löschen?')){pushHistory();
-    state.nodes=[];state.wires=[];sel=null;render();inspector();showToast('Zeichenfläche geleert');}
+  pushHistory();
+  state.nodes=[];state.wires=[];sel=null;render();inspector();
+  showToast('Zeichenfläche geleert · Strg+Z zum Rückgängigmachen');
 };
 
 /* ---------------- save / load ---------------- */
@@ -441,26 +534,107 @@ el('load').onclick=()=>{
   const inp=document.createElement('input');inp.type='file';inp.accept='.json';
   inp.onchange=()=>{const f=inp.files[0];const rd=new FileReader();
     rd.onload=()=>{try{const o=JSON.parse(rd.result);if(!o.nodes)throw 0;pushHistory();
-      state=o;sel=null;render();inspector();fit();showToast('Geladen');}catch(_){alert('Ungültige Datei.');}};
+      state=o;state.project=state.project||defaultProject();
+      sel=null;render();inspector();fit();showToast('Geladen');}catch(_){alert('Ungültige Datei.');}};
     rd.readAsText(f);};inp.click();
 };
 
+/* ---------------- project modal ---------------- */
+function openProjectModal(){
+  const bd=document.createElement('div');bd.className='modal-backdrop';
+  const p=state.project;
+  const esc=(s)=>(s||'').replace(/"/g,'&quot;');
+  const fields=[
+    ['betreiberName','Betreiber – Name'],
+    ['betreiberAdresse','Betreiber – Adresse'],
+    ['standortAdresse','Anlagenstandort – Adresse'],
+    ['erstellerFirma','Anlagenerrichter – Firma'],
+    ['erstellerOrt','Anlagenerrichter – Ort'],
+    ['datum','Datum'],
+  ];
+  bd.innerHTML=`<div class="modal">
+    <h2>Projektdaten</h2>
+    ${fields.map(([k,label])=>
+      `<div class="field"><label>${label}</label><input data-k="${k}" value="${esc(p[k])}"></div>`
+    ).join('')}
+    <div class="actions"><button id="pf-close">Schließen</button></div>
+  </div>`;
+  document.body.appendChild(bd);
+  projectModalEl=bd;
+  const closeModal=()=>{bd.remove();projectModalEl=null;};
+  bd.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',()=>{
+    if(!inp._touched){pushHistory();inp._touched=true;}
+    state.project[inp.dataset.k]=inp.value;render();
+  }));
+  const dEl=bd.querySelector('input[data-k="datum"]');
+  if(!dEl.value){
+    // Auto-fill today's date as a silent default. Deliberately NOT via
+    // pushHistory()/render(): merely opening the panel must not create an
+    // undo step or clear the user's redo stack. scheduleAutosave() persists it.
+    const now=new Date();
+    const localDate=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    dEl.value=localDate;
+    state.project.datum=localDate;
+    scheduleAutosave();
+  }
+  bd.addEventListener('pointerdown',e=>{if(e.target===bd)closeModal();});
+  bd.querySelector('#pf-close').onclick=closeModal;
+}
+el('project').onclick=openProjectModal;
+
 /* ---------------- export ---------------- */
+function legendSVG(){
+  const rows=[['AC-Leitung',KINDCOL.ac],['DC-Leitung',KINDCOL.dc],['Signal / Steuerung',KINDCOL.sig]];
+  let out='<g font-family="ui-monospace,monospace" font-size="11" fill="#8896a6">';
+  rows.forEach((r,i)=>{
+    const ry=i*20;
+    out+=`<line x1="0" y1="${ry}" x2="22" y2="${ry}" stroke="${r[1]}" stroke-width="3" stroke-linecap="round"/>`;
+    out+=`<text x="30" y="${ry+4}">${r[0]}</text>`;
+  });
+  return out+'</g>';
+}
+function schriftfeldSVG(w,h){
+  const p=state.project;
+  const esc=(s)=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const row=(label,val,ry)=>
+    `<text x="10" y="${ry}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">${label}</text>`+
+    `<text x="10" y="${ry+15}" font-family="Inter,sans-serif" font-size="12" fill="#e8eef5">${esc(val)||'—'}</text>`;
+  const third=h/3;
+  let out='<g>';
+  out+=`<rect x="0" y="0" width="${w}" height="${h}" fill="none" stroke="#2a3441"/>`;
+  out+=`<line x1="0" y1="${third}" x2="${w}" y2="${third}" stroke="#2a3441"/>`;
+  out+=`<line x1="0" y1="${2*third}" x2="${w}" y2="${2*third}" stroke="#2a3441"/>`;
+  out+=`<line x1="${w*0.6}" y1="${2*third}" x2="${w*0.6}" y2="${h}" stroke="#2a3441"/>`;
+  out+=`<line x1="${w*0.8}" y1="${2*third}" x2="${w*0.8}" y2="${h}" stroke="#2a3441"/>`;
+  out+=row('Betreiber',[p.betreiberName,p.betreiberAdresse].filter(Boolean).join(' · '),18);
+  out+=row('Anlagenstandort',p.standortAdresse,third+18);
+  out+=row('Anlagenerrichter',[p.erstellerFirma,p.erstellerOrt].filter(Boolean).join(', '),2*third+18);
+  out+=`<text x="${w*0.6+10}" y="${2*third+18}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">Datum</text>`;
+  out+=`<text x="${w*0.6+10}" y="${2*third+33}" font-family="Inter,sans-serif" font-size="12" fill="#e8eef5">${esc(p.datum)||'—'}</text>`;
+  out+=`<text x="${w*0.8+10}" y="${2*third+18}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">Unterschrift Anlagenerrichter</text>`;
+  out+=`<line x1="${w*0.8+10}" y1="${h-14}" x2="${w-10}" y2="${h-14}" stroke="#5b6674"/>`;
+  return out+'</g>';
+}
 function serializeSVG(){
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
   for(const n of state.nodes){const c=LIB[n.key];x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+c.w);y1=Math.max(y1,n.y+c.h);}
-  if(!isFinite(x0)){x0=0;y0=0;x1=400;y1=300;}
-  const pad=48;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const w=x1-x0,h=y1-y0;
+  if(!state.nodes.length){x0=0;y0=0;x1=400;y1=300;}
+  const pad=48;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const dw=x1-x0,dh=y1-y0;
+  const TITLE_H=40,LEGEND_H=76,SCHRIFT_H=120;
+  const w=dw,h=TITLE_H+dh+LEGEND_H+SCHRIFT_H;
   const clone=VP.cloneNode(true);
   const tw=clone.querySelector('#tempwire');if(tw)clone.removeChild(tw);
   // strip invisible hit paths/circles from clone
   clone.querySelectorAll('.wirehit,.port').forEach(e=>e.remove());
-  clone.setAttribute('transform',`translate(${-x0},${-y0})`);
+  clone.setAttribute('transform',`translate(${-x0},${-y0+TITLE_H})`);
   const css=document.querySelector('style').textContent;
+  const title=`<text x="${w/2}" y="26" text-anchor="middle" font-family="Inter,sans-serif" font-size="15" font-weight="600" fill="#e8eef5">Übersichtsschaltplan nach VDE-AR-N 4105</text>`;
+  const legend=`<g transform="translate(16,${TITLE_H+dh+16})">${legendSVG()}</g>`;
+  const schrift=`<g transform="translate(0,${TITLE_H+dh+LEGEND_H})">${schriftfeldSVG(w,SCHRIFT_H)}</g>`;
   const svg=`<svg xmlns="${SVGNS}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
     +`<style>${css}</style>`
     +`<rect width="${w}" height="${h}" fill="#0d1017"/>`
-    +clone.outerHTML+`</svg>`;
+    +title+clone.outerHTML+legend+schrift+`</svg>`;
   return {svg,w,h};
 }
 el('exportSvg').onclick=()=>{const {svg}=serializeSVG();dl(new Blob([svg],{type:'image/svg+xml'}),'schaltplan.svg');showToast('SVG exportiert');};
@@ -479,7 +653,7 @@ function dl(blob,name){const a=document.createElement('a');a.href=URL.createObje
 /* ---------------- seed example ---------------- */
 function seed(){
   const ids={};
-  const add=(k,x,y)=>{const c=LIB[k];const fields={};c.fields.forEach(f=>fields[f[0]]=f[2]);
+  const add=(k,x,y)=>{const c=LIB[k];const fields=fillFields(c);
     const n={id:'n'+(state.seq++),key:k,x,y,fields};state.nodes.push(n);ids[k]=n.id;};
   add('netz',0,150);add('hak',168,150);add('sls',312,150);add('zaehler',456,145);add('uv',624,144);
   add('load',468,300);add('pvwr',612,312);add('pvgen',613,432);add('multi',792,290);add('battery',960,438);
@@ -492,6 +666,6 @@ function seed(){
 /* ---------------- init ---------------- */
 buildPalette();
 applyView();
+if(loadAutosave()){render();}else{seed();}
 inspector();
 updateUndo();
-seed();
