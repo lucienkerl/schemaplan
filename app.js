@@ -240,7 +240,8 @@ function render(){
   gNodes.innerHTML='';
   for(const n of state.nodes){
     const c=LIB[n.key];
-    const g=mk('g',{transform:`translate(${n.x},${n.y})`,class:'node'});
+    const g=mk('g',{transform:`translate(${n.x},${n.y})`,class:'node',tabindex:'0',role:'group',
+      'aria-label':(n.fields.name||c.name)});
     g.dataset.id=n.id;
     if(sel&&sel.type==='node'&&sel.id===n.id)g.classList.add('sel');
     const strokeW=(sel&&sel.type==='node'&&sel.id===n.id)?2.4:1.4;
@@ -399,7 +400,7 @@ function dupNode(id){const n=state.nodes.find(x=>x.id===id);if(!n)return;pushHis
 document.addEventListener('pointerdown',e=>{if(ctxEl&&!ctxEl.contains(e.target))closeCtx();},true);
 
 /* ---------------- interaction ---------------- */
-let drag=null,wiring=null,panning=null,space=false,moved=false,addOffset=0;
+let drag=null,wiring=null,panning=null,space=false,moved=false,addOffset=0,arrowMoveStarted=false;
 
 SVG.addEventListener('pointerdown',e=>{
   closeCtx();
@@ -477,11 +478,28 @@ window.addEventListener('keydown',e=>{
   if(e.code==='Space'&&!typing){space=true;SVG.classList.add('panready');}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();return;}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();redo();return;}
+  if(e.key.startsWith('Arrow')&&sel&&sel.type==='node'&&!typing){
+    e.preventDefault();
+    const n=state.nodes.find(x=>x.id===sel.id);if(!n)return;
+    if(!arrowMoveStarted){pushHistory();arrowMoveStarted=true;}
+    const step=12;
+    if(e.key==='ArrowUp')n.y-=step;
+    if(e.key==='ArrowDown')n.y+=step;
+    if(e.key==='ArrowLeft')n.x-=step;
+    if(e.key==='ArrowRight')n.x+=step;
+    render();
+    const gEl=gNodes.querySelector(`g[data-id="${n.id}"]`);
+    if(gEl)gEl.focus();
+    return;
+  }
   if((e.key==='Delete'||e.key==='Backspace')&&sel&&!typing){e.preventDefault();
     sel.type==='wire'?removeWire(sel.id):removeNode(sel.id);}
   if(e.key==='Escape'){if(projectModalEl){projectModalEl.remove();projectModalEl=null;return;}closeCtx();selectItem(null);}
 });
-window.addEventListener('keyup',e=>{if(e.code==='Space'){space=false;SVG.classList.remove('panready');}});
+window.addEventListener('keyup',e=>{
+  if(e.code==='Space'){space=false;SVG.classList.remove('panready');}
+  if(e.key.startsWith('Arrow'))arrowMoveStarted=false;
+});
 
 /* drop from palette */
 const stage=el('stage');
