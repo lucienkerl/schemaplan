@@ -91,8 +91,8 @@ Object.keys(LIB).forEach(k=>{if(!ICONS[k])console.warn('Kein Icon für Bauteilty
 const KINDCOL={ac:'#e5ab45',dc:'#4aa8ec',sig:'#6fdc8c'};
 
 /* ---------------- state ---------------- */
-function defaultProject(){return {betreiberName:'',betreiberAdresse:'',standortAdresse:'',
-  erstellerFirma:'',erstellerOrt:'',datum:''};}
+function defaultProject(){return {betreiber:'',anschrift:'',ersteller:'',datum:'',
+  zaehlerNr:'',mastrNr:''};}
 let state={nodes:[],wires:[],seq:1,project:defaultProject()};
 let view={x:120,y:80,k:1};
 let sel=null;        // {type:'node'|'wire', id}
@@ -558,12 +558,12 @@ function openProjectModal(){
   const p=state.project;
   const esc=(s)=>(s||'').replace(/"/g,'&quot;');
   const fields=[
-    ['betreiberName','Betreiber – Name'],
-    ['betreiberAdresse','Betreiber – Adresse'],
-    ['standortAdresse','Anlagenstandort – Adresse'],
-    ['erstellerFirma','Anlagenerrichter – Firma'],
-    ['erstellerOrt','Anlagenerrichter – Ort'],
+    ['betreiber','Anlagenbetreiber'],
+    ['anschrift','Anschrift'],
+    ['ersteller','Ersteller'],
     ['datum','Datum'],
+    ['zaehlerNr','Zähler-Nr.'],
+    ['mastrNr','MaStR-Nr.'],
   ];
   bd.innerHTML=`<div class="modal">
     <h2>Projektdaten</h2>
@@ -595,60 +595,92 @@ function openProjectModal(){
 }
 el('project').onclick=openProjectModal;
 
-/* ---------------- export ---------------- */
-function legendSVG(){
-  const rows=[['AC-Leitung',KINDCOL.ac],['DC-Leitung',KINDCOL.dc],['Signal / Steuerung',KINDCOL.sig]];
-  let out='<g font-family="ui-monospace,monospace" font-size="11" fill="#8896a6">';
-  rows.forEach((r,i)=>{
-    const ry=i*20;
-    out+=`<line x1="0" y1="${ry}" x2="22" y2="${ry}" stroke="${r[1]}" stroke-width="3" stroke-linecap="round"/>`;
-    out+=`<text x="30" y="${ry+4}">${r[0]}</text>`;
+/* ---------------- export (light DIN-style sheet) ---------------- */
+const XESC=(s)=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// "Hinweise / auszufüllen" box (bottom-left), like the reference sheet
+function notesSVG(w,h){
+  const notes=[
+    'Z1 = Zweirichtungszähler am Netzverknüpfungspunkt (Bezug + Überschusslieferung).',
+    'NA-Schutz nach VDE-AR-N 4105 in den Wechselrichtern integriert (>30 kVA: externer NA-Schutz).',
+    'Kennwerte ergänzen: kWp, kVA, kWh, Fabrikat/Typ, Zählernummer, Zählpfeilrichtung.',
+    'Ggf. Steuerung nach §14a EnWG / NSGM ergänzen (Steuerbox / EMS).',
+  ];
+  let out=`<rect x="0" y="0" width="${w}" height="${h}" fill="none" stroke="#c7ccd3"/>`;
+  out+=`<text x="12" y="22" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="#1f2937">Hinweise / auszufüllen:</text>`;
+  notes.forEach((t,i)=>{
+    out+=`<text x="14" y="${44+i*20}" font-family="Inter,sans-serif" font-size="9.5" fill="#374151">· ${XESC(t)}</text>`;
   });
-  return out+'</g>';
+  return out;
 }
+// title block (bottom-right)
 function schriftfeldSVG(w,h){
   const p=state.project;
-  const esc=(s)=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-  const row=(label,val,ry)=>
-    `<text x="10" y="${ry}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">${label}</text>`+
-    `<text x="10" y="${ry+15}" font-family="Inter,sans-serif" font-size="12" fill="#e8eef5">${esc(val)||'—'}</text>`;
-  const third=h/3;
-  let out='<g>';
-  out+=`<rect x="0" y="0" width="${w}" height="${h}" fill="none" stroke="#2a3441"/>`;
-  out+=`<line x1="0" y1="${third}" x2="${w}" y2="${third}" stroke="#2a3441"/>`;
-  out+=`<line x1="0" y1="${2*third}" x2="${w}" y2="${2*third}" stroke="#2a3441"/>`;
-  out+=`<line x1="${w*0.6}" y1="${2*third}" x2="${w*0.6}" y2="${h}" stroke="#2a3441"/>`;
-  out+=`<line x1="${w*0.8}" y1="${2*third}" x2="${w*0.8}" y2="${h}" stroke="#2a3441"/>`;
-  out+=row('Betreiber',[p.betreiberName,p.betreiberAdresse].filter(Boolean).join(' · '),18);
-  out+=row('Anlagenstandort',p.standortAdresse,third+18);
-  out+=row('Anlagenerrichter',[p.erstellerFirma,p.erstellerOrt].filter(Boolean).join(', '),2*third+18);
-  out+=`<text x="${w*0.6+10}" y="${2*third+18}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">Datum</text>`;
-  out+=`<text x="${w*0.6+10}" y="${2*third+33}" font-family="Inter,sans-serif" font-size="12" fill="#e8eef5">${esc(p.datum)||'—'}</text>`;
-  out+=`<text x="${w*0.8+10}" y="${2*third+18}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">Unterschrift Anlagenerrichter</text>`;
-  out+=`<line x1="${w*0.8+10}" y1="${h-14}" x2="${w-10}" y2="${h-14}" stroke="#5b6674"/>`;
-  return out+'</g>';
+  const midX=w*0.52, r1=44, r2=76, div=92;
+  // full-width field: label + value/underline
+  const wide=(label,val,y)=>{
+    let s=`<text x="12" y="${y}" font-family="Inter,sans-serif" font-size="9.5" fill="#6b7280">${label}</text>`;
+    const vx=110;
+    if(val&&val.trim()) s+=`<text x="${vx}" y="${y}" font-family="Inter,sans-serif" font-size="11" fill="#111827">${XESC(val)}</text>`;
+    s+=`<line x1="${vx}" y1="${y+4}" x2="${w-12}" y2="${y+4}" stroke="#c7ccd3"/>`;
+    return s;
+  };
+  // cell field in a 2-column grid: label above, value/underline below
+  const cell=(label,val,x,y,cw)=>{
+    let s=`<text x="${x}" y="${y}" font-family="Inter,sans-serif" font-size="9.5" fill="#6b7280">${label}</text>`;
+    if(val&&val.trim()) s+=`<text x="${x}" y="${y+15}" font-family="Inter,sans-serif" font-size="11" fill="#111827">${XESC(val)}</text>`;
+    s+=`<line x1="${x}" y1="${y+19}" x2="${x+cw}" y2="${y+19}" stroke="#c7ccd3"/>`;
+    return s;
+  };
+  let out=`<rect x="0" y="0" width="${w}" height="${h}" fill="none" stroke="#9ca3af"/>`;
+  out+=wide('Anlagenbetreiber',p.betreiber,r1);
+  out+=wide('Anschrift',p.anschrift,r2);
+  out+=`<line x1="0" y1="${div}" x2="${w}" y2="${div}" stroke="#c7ccd3"/>`;
+  out+=`<line x1="${midX}" y1="${div}" x2="${midX}" y2="${h}" stroke="#c7ccd3"/>`;
+  out+=cell('Ersteller',p.ersteller,12,div+20,midX-24);
+  out+=cell('Zähler-Nr.',p.zaehlerNr,midX+12,div+20,w-midX-24);
+  out+=cell('Datum',p.datum,12,div+46,midX-24);
+  out+=cell('MaStR-Nr.',p.mastrNr,midX+12,div+46,w-midX-24);
+  return out;
 }
 function serializeSVG(){
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
   for(const n of state.nodes){const c=LIB[n.key];x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+c.w);y1=Math.max(y1,n.y+c.h);}
   if(!state.nodes.length){x0=0;y0=0;x1=400;y1=300;}
-  const pad=48;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const dw=x1-x0,dh=y1-y0;
-  const TITLE_H=40,LEGEND_H=76,SCHRIFT_H=120;
-  const w=dw,h=TITLE_H+dh+LEGEND_H+SCHRIFT_H;
+  const pad=56;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const dw=x1-x0,dh=y1-y0;
+  // sheet layout (light, DIN-style): frame + title + diagram + notes/Schriftfeld row
+  const M=22, TITLE_H=52, GAP=18, BOTTOM_H=158, SCHRIFT_W=328, NGAP=22;
+  const contentW=Math.max(dw, 820);
+  const W=contentW+2*M;
+  const H=M+TITLE_H+dh+GAP+BOTTOM_H+M;
+  const diagX=M+(contentW-dw)/2;               // centre diagram in the content area
+  const diagY=M+TITLE_H;
+  const rowY=M+TITLE_H+dh+GAP;
+  const schriftX=W-M-SCHRIFT_W;
+  const notesW=schriftX-M-NGAP;
+
+  // diagram clone, recoloured for a light background
   const clone=VP.cloneNode(true);
   const tw=clone.querySelector('#tempwire');if(tw)clone.removeChild(tw);
-  // strip invisible hit paths/circles from clone
   clone.querySelectorAll('.wirehit,.port').forEach(e=>e.remove());
-  clone.setAttribute('transform',`translate(${-x0},${-y0+TITLE_H})`);
+  // hollow (unused) port dots are dark on the dark canvas → make them white here
+  clone.querySelectorAll('circle').forEach(c=>{if(c.getAttribute('fill')==='#0d1017')c.setAttribute('fill','#ffffff');});
+  clone.setAttribute('transform',`translate(${diagX-x0},${diagY-y0})`);
+
   const css=document.querySelector('style').textContent;
-  const title=`<text x="${w/2}" y="26" text-anchor="middle" font-family="Inter,sans-serif" font-size="15" font-weight="600" fill="#e8eef5">Übersichtsschaltplan nach VDE-AR-N 4105</text>`;
-  const legend=`<g transform="translate(16,${TITLE_H+dh+16})">${legendSVG()}</g>`;
-  const schrift=`<g transform="translate(0,${TITLE_H+dh+LEGEND_H})">${schriftfeldSVG(w,SCHRIFT_H)}</g>`;
-  const svg=`<svg xmlns="${SVGNS}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
-    +`<style>${css}</style>`
-    +`<rect width="${w}" height="${h}" fill="#0d1017"/>`
-    +title+clone.outerHTML+legend+schrift+`</svg>`;
-  return {svg,w,h};
+  // light-theme overrides (win over the embedded dark stylesheet + node-body fill attr)
+  const lightCss=`.node-body{fill:#ffffff}.node-name{fill:#111827}.node-val{fill:#4b5563}.port-label{fill:#6b7280}`;
+
+  const title=`<text x="${M+14}" y="${M+26}" font-family="Inter,sans-serif" font-size="16" font-weight="700" fill="#111827">Übersichtsschaltplan – PV-Anlage mit Batteriespeicher</text>`
+    +`<text x="${M+14}" y="${M+44}" font-family="Inter,sans-serif" font-size="10.5" fill="#6b7280">Anschluss gem. VDE-AR-N 4105 / 4100 · erstellt mit Schemaplan</text>`;
+  const frame=`<rect x="${M}" y="${M}" width="${W-2*M}" height="${H-2*M}" fill="none" stroke="#111827" stroke-width="1.2"/>`;
+  const notes=`<g transform="translate(${M},${rowY})">${notesSVG(notesW,BOTTOM_H)}</g>`;
+  const schrift=`<g transform="translate(${schriftX},${rowY})">${schriftfeldSVG(SCHRIFT_W,BOTTOM_H)}</g>`;
+
+  const svg=`<svg xmlns="${SVGNS}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
+    +`<style>${css}${lightCss}</style>`
+    +`<rect width="${W}" height="${H}" fill="#ffffff"/>`
+    +frame+title+clone.outerHTML+notes+schrift+`</svg>`;
+  return {svg,w:W,h:H};
 }
 el('exportSvg').onclick=()=>{const {svg}=serializeSVG();dl(new Blob([svg],{type:'image/svg+xml'}),'schaltplan.svg');showToast('SVG exportiert');};
 el('png').onclick=()=>{
