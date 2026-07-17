@@ -568,12 +568,14 @@ function openProjectModal(){
   }));
   const dEl=bd.querySelector('input[data-k="datum"]');
   if(!dEl.value){
-    pushHistory();
+    // Auto-fill today's date as a silent default. Deliberately NOT via
+    // pushHistory()/render(): merely opening the panel must not create an
+    // undo step or clear the user's redo stack. scheduleAutosave() persists it.
     const now=new Date();
     const localDate=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     dEl.value=localDate;
     state.project.datum=localDate;
-    render();
+    scheduleAutosave();
   }
   bd.addEventListener('pointerdown',e=>{if(e.target===bd)closeModal();});
   bd.querySelector('#pf-close').onclick=closeModal;
@@ -616,7 +618,7 @@ function schriftfeldSVG(w,h){
 function serializeSVG(){
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
   for(const n of state.nodes){const c=LIB[n.key];x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+c.w);y1=Math.max(y1,n.y+c.h);}
-  if(!isFinite(x0)){x0=0;y0=0;x1=400;y1=300;}
+  if(!state.nodes.length){x0=0;y0=0;x1=400;y1=300;}
   const pad=48;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const dw=x1-x0,dh=y1-y0;
   const TITLE_H=40,LEGEND_H=76,SCHRIFT_H=120;
   const w=dw,h=TITLE_H+dh+LEGEND_H+SCHRIFT_H;
