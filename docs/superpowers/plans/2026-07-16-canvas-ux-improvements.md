@@ -450,14 +450,26 @@ git commit -m "feat: show per-component icons in the palette"
 
 - [ ] **Step 1: Add an icon badge to each rendered node**
 
-In `app.js`, `render()` (line 176-193), right after the two `rect` elements are appended (the node body and the color accent bar, ending at line 185) and before the label text is created (line 187), insert:
+In `app.js`, inside `render()`, find this exact sequence (the node body rect, the color accent bar, then the label text creation):
 
 ```js
+    g.appendChild(mk('rect',{width:c.w,height:3,rx:1.5,fill:c.color,opacity:.9}));
+
+    const t1=mk('text',{class:'node-label',x:c.w/2,y:19,'text-anchor':'middle'});
+```
+
+Insert the icon badge between the accent-bar line and the label-text line, so it reads:
+
+```js
+    g.appendChild(mk('rect',{width:c.w,height:3,rx:1.5,fill:c.color,opacity:.9}));
+
     const ic=mk('g',{transform:'translate(6,6) scale(0.5)',stroke:c.color,fill:'none','stroke-width':1.8,
       'stroke-linecap':'round','stroke-linejoin':'round'});
     ic.style.pointerEvents='none';
     ic.innerHTML=ICONS[n.key];
     g.appendChild(ic);
+
+    const t1=mk('text',{class:'node-label',x:c.w/2,y:19,'text-anchor':'middle'});
 ```
 
 - [ ] **Step 2: Verify node icons render without crowding the title**
@@ -475,11 +487,12 @@ git commit -m "feat: show per-component icon badge on canvas nodes"
 
 ## Chunk 5: Netze-BW-konformer Export (Projektdaten + Schriftfeld)
 
-**Depends on Chunk 2** (extends `loadAutosave()` and the `el('load')` handler it modifies).
+**Depends on Chunk 2** (extends the `loadAutosave()` function Chunk 2 creates).
 
 **Files:**
-- Modify: `app.js:73` (`state` init), `app.js:83-87` (`snapshot()`/`restore()`), `app.js:440-446` (`el('load')` handler), `app.js:449-466` (`serializeSVG()`)
-- Modify: `index.html:166-172` (header buttons), add project-modal CSS
+- Modify: `app.js:73` (`state` init), `app.js:83-87` (`snapshot()`/`restore()`), `app.js` (`loadAutosave()`, added by Chunk 2), `app.js:440-446` (`el('load')` handler, untouched by Chunk 2 — first modified here), `app.js:449-466` (`serializeSVG()`)
+- Insert: `app.js` (new `projectModalEl`/`syncProjectModal()`, `openProjectModal()`, `legendSVG()`, `schriftfeldSVG()`)
+- Modify: `index.html:166-172` (header buttons), insert new modal CSS block
 
 ### Task 1: Add `state.project` with a shared default and backward-compat fallback
 
@@ -514,9 +527,19 @@ to:
 ```js
 function snapshot(){return JSON.stringify({nodes:state.nodes,wires:state.wires,seq:state.seq,project:state.project});}
 function pushHistory(){history.push(snapshot());if(history.length>100)history.shift();future=[];updateUndo();}
+let projectModalEl=null;
+function syncProjectModal(){
+  if(!projectModalEl)return;
+  projectModalEl.querySelectorAll('input').forEach(inp=>{
+    inp.value=state.project[inp.dataset.k]||'';
+    inp._touched=false;
+  });
+}
 function restore(s){const o=JSON.parse(s);state.nodes=o.nodes;state.wires=o.wires;state.seq=o.seq;
-  state.project=o.project||defaultProject();sel=null;render();inspector();}
+  state.project=o.project||defaultProject();sel=null;render();inspector();syncProjectModal();}
 ```
+
+`projectModalEl` tracks the currently-open Projekt panel (`null` when closed). `syncProjectModal()` re-reads every field from `state.project` and resets each input's `_touched` flag whenever undo/redo runs, mirroring how `inspector()` already handles this for node fields (there, rebuilding `body.innerHTML` on every call has the same effect implicitly). Resetting `_touched` matters here specifically: without it, a user who presses Strg+Z and then keeps typing in the same still-open field would have their next keystroke skip `pushHistory()` (since `_touched` would still be `true` from before the undo) and silently overwrite the just-restored value — this reset is what prevents that. Task 2 below creates and destroys `projectModalEl`; this stays a no-op (`if(!projectModalEl)return;`) until the panel is opened for the first time.
 
 - [ ] **Step 3: Backfill `project` when loading old autosave data**
 
@@ -630,6 +653,8 @@ function openProjectModal(){
     <div class="actions"><button id="pf-close">Schließen</button></div>
   </div>`;
   document.body.appendChild(bd);
+  projectModalEl=bd;
+  const closeModal=()=>{bd.remove();projectModalEl=null;};
   bd.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',()=>{
     if(!inp._touched){pushHistory();inp._touched=true;}
     state.project[inp.dataset.k]=inp.value;render();
@@ -641,17 +666,19 @@ function openProjectModal(){
     state.project.datum=dEl.value;
     render();
   }
-  bd.addEventListener('pointerdown',e=>{if(e.target===bd)bd.remove();});
-  bd.querySelector('#pf-close').onclick=()=>bd.remove();
+  bd.addEventListener('pointerdown',e=>{if(e.target===bd)closeModal();});
+  bd.querySelector('#pf-close').onclick=closeModal;
 }
 el('project').onclick=openProjectModal;
 ```
 
-The date auto-fill writes straight to `state.project.datum` (via its own `pushHistory()`) rather than only pre-filling the input's displayed value, so a user who opens the panel and closes it again without touching any field still gets today's date captured in the export — not a blank Schriftfeld date.
+The date auto-fill writes straight to `state.project.datum` (via its own `pushHistory()`) rather than only pre-filling the input's displayed value, so a user who opens the panel and closes it again without touching any field still gets today's date captured in the export — not a blank Schriftfeld date. `projectModalEl` (declared in Task 1 Step 2 above, alongside `syncProjectModal()`) is set here on open and cleared on close, so undo/redo while the panel is open correctly refreshes its visible fields instead of leaving them stale.
 
 - [ ] **Step 4: Verify live updates, persistence, and undo**
 
-In the browser: click "Projekt". Expected: "Datum" is already pre-filled with today's date. Type `Max Mustermann` into "Betreiber – Name" character by character — do not click anything else. Reload the page (`mcp__Claude_Browser__navigate`) without closing the panel first. Expected: after reload, click "Projekt" again — `Max Mustermann` is still there (autosave picked up the live edits). Reopen the panel, type into "Betreiber – Adresse", then press `Strg+Z`. Expected: the entire typed string in that field is undone in a single step (toast "Rückgängig"), not one undo per keystroke.
+In the browser: click "Projekt". Expected: "Datum" is already pre-filled with today's date. Type `Max Mustermann` into "Betreiber – Name" character by character — do not click anything else. Reload the page (`mcp__Claude_Browser__navigate`) without closing the panel first. Expected: after reload, click "Projekt" again — `Max Mustermann` is still there (autosave picked up the live edits).
+
+Reopen the panel if closed, type into "Betreiber – Adresse" (keep the panel open, don't click away), then press `Strg+Z`. Expected: two things happen together — (1) toast "Rückgängig", and (2) the "Betreiber – Adresse" **input field itself visually reverts** to its pre-edit value while the panel is still open (this is the `syncProjectModal()` behavior from Task 1 Step 2 — without it the field would keep showing the just-typed text even though the underlying state reverted). Type one more character into that same field afterward. Expected: it starts a fresh undo step (confirms `_touched` was correctly reset by the undo, not silently skipping `pushHistory()` on the next edit).
 
 - [ ] **Step 5: Commit**
 
@@ -754,7 +781,7 @@ function serializeSVG(){
 
 - [ ] **Step 3: Verify SVG export**
 
-In the browser: fill in the Projekt panel (Task 2) with sample data, click "SVG". Read the downloaded `schaltplan.svg` file (e.g. via `Read` tool or `cat`). Expected: the file contains the text `Übersichtsschaltplan nach VDE-AR-N 4105`, the three legend rows (`AC-Leitung`, `DC-Leitung`, `Signal / Steuerung`), and the Schriftfeld values you entered (`Betreiber`, `Anlagenstandort`, `Anlagenerrichter`, `Datum`).
+In the browser: fill in the Projekt panel (Task 2) with sample data — use at least one value with a descender letter (e.g. Betreiber-Name `Jürgen Gruber`) to check the Schriftfeld row height has enough headroom — click "SVG". Read the downloaded `schaltplan.svg` file (e.g. via `Read` tool or `cat`). Expected: the file contains the text `Übersichtsschaltplan nach VDE-AR-N 4105`, the three legend rows (`AC-Leitung`, `DC-Leitung`, `Signal / Steuerung`), and the Schriftfeld values you entered (`Betreiber`, `Anlagenstandort`, `Anlagenerrichter`, `Datum`), with no visible clipping of descenders at the bottom of the Schriftfeld rows.
 
 - [ ] **Step 4: Verify PNG export**
 
