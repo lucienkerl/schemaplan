@@ -150,7 +150,7 @@ function buildPalette(filter=''){
     const h=document.createElement('div');h.className='pgroup';h.textContent=g;list.appendChild(h);
     for(const [key,c] of items){
       const d=document.createElement('div');d.className='pitem';d.draggable=true;d.dataset.key=key;
-      d.innerHTML=`<span class="dot" style="background:${c.color}"></span>${c.name}`;
+      d.innerHTML=`<span class="picon" style="background:${c.color}22;color:${c.color}"><svg viewBox="0 0 24 24">${ICONS[key]}</svg></span>${c.name}`;
       d.addEventListener('click',()=>addNode(key));
       d.addEventListener('dragstart',e=>e.dataTransfer.setData('key',key));
       list.appendChild(d);
