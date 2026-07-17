@@ -341,13 +341,23 @@ function render(){
   }
   updateStats();
 }
+// Orthogonal (right-angle) routing: short stub out of each port, then H/V
+// segments. When the two ports share a Y (or X), it collapses to a straight
+// horizontal (or vertical) line — matching the VDE-AR-N reference style.
 function wirePath(a,b){
-  const off=Math.max(30,Math.abs(a.x-b.x)/2,Math.abs(a.y-b.y)/2);
-  const c1x=a.side==='l'?a.x-off:a.side==='r'?a.x+off:a.x;
-  const c1y=a.side==='t'?a.y-off:a.side==='b'?a.y+off:a.y;
-  const c2x=b.side==='l'?b.x-off:b.side==='r'?b.x+off:b.x;
-  const c2y=b.side==='t'?b.y-off:b.side==='b'?b.y+off:b.y;
-  return `M${a.x},${a.y} C${c1x},${c1y} ${c2x},${c2y} ${b.x},${b.y}`;
+  const s=16;
+  const ah=(a.side==='l'||a.side==='r'), bh=(b.side==='l'||b.side==='r');
+  const ax=a.x+(a.side==='l'?-s:a.side==='r'?s:0), ay=a.y+(a.side==='t'?-s:a.side==='b'?s:0);
+  const bx=b.x+(b.side==='l'?-s:b.side==='r'?s:0), by=b.y+(b.side==='t'?-s:b.side==='b'?s:0);
+  const pts=[[a.x,a.y],[ax,ay]];
+  if(ah&&bh){const mx=(ax+bx)/2;pts.push([mx,ay],[mx,by]);}       // H ports: vertical jog at mid-x
+  else if(!ah&&!bh){const my=(ay+by)/2;pts.push([ax,my],[bx,my]);}// V ports: horizontal jog at mid-y
+  else if(ah&&!bh){pts.push([bx,ay]);}                            // H→V elbow
+  else{pts.push([ax,by]);}                                        // V→H elbow
+  pts.push([bx,by],[b.x,b.y]);
+  // drop consecutive duplicate points (keeps a clean straight line when aligned)
+  const clean=pts.filter((p,i)=>i===0||p[0]!==pts[i-1][0]||p[1]!==pts[i-1][1]);
+  return 'M'+clean.map(p=>p.join(',')).join(' L');
 }
 function renderWires(){
   gWires.innerHTML='';
