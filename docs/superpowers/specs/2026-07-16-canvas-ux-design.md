@@ -58,7 +58,8 @@ der letzten Änderung) als JSON in `localStorage` unter dem Schlüssel
 `schemaplan.autosave.v1` abgelegt. Debounce verhindert exzessive
 `localStorage`-Schreibzugriffe bei z.B. laufendem Node-Drag.
 
-**Laden (App-Init):**
+**Laden (App-Init):** Der Init-Block (app.js:492-497) ruft aktuell
+unbedingt `seed()` auf; das wird durch die folgende bedingte Logik ersetzt:
 - Existiert ein gültiger Autosave-Eintrag → wird geladen (`state = JSON.parse(...)`),
   `seed()` wird **nicht** aufgerufen.
 - Kein Eintrag vorhanden (allererster Besuch) oder Eintrag lässt sich nicht
