@@ -358,42 +358,36 @@ function pathClear(pts,obs){
 }
 // Orthogonal routing that steers around node boxes (obs). Aligned ports still
 // give a straight line; otherwise it detours above/below (or beside) obstacles.
-function wirePoints(a,b,obs){
+function wirePoints(a,b,boxes){
   const s=16;
   const ah=(a.side==='l'||a.side==='r'), bh=(b.side==='l'||b.side==='r');
   const ax=a.x+(a.side==='l'?-s:a.side==='r'?s:0), ay=a.y+(a.side==='t'?-s:a.side==='b'?s:0);
   const bx=b.x+(b.side==='l'?-s:b.side==='r'?s:0), by=b.y+(b.side==='t'?-s:b.side==='b'?s:0);
   const build=(mids)=>{const p=[[a.x,a.y],[ax,ay],...mids,[bx,by],[b.x,b.y]];
     return p.filter((q,i)=>i===0||q[0]!==p[i-1][0]||q[1]!==p[i-1][1]);};
-  let mids;
-  if(ah&&bh)mids=[[(ax+bx)/2,ay],[(ax+bx)/2,by]];
-  else if(!ah&&!bh)mids=[[ax,(ay+by)/2],[bx,(ay+by)/2]];
-  else if(ah&&!bh)mids=[[bx,ay]];
-  else mids=[[ax,by]];
-  let pts=build(mids);
-  if(!obs||!obs.length||pathClear(pts,obs))return pts;
-  const M=20;
-  if(ah&&bh){
-    const x0=Math.min(ax,bx),x1=Math.max(ax,bx);
-    const rel=obs.filter(o=>o.x<x1&&o.x+o.w>x0);
-    if(rel.length){
-      const top=Math.min(...rel.map(o=>o.y))-M, bot=Math.max(...rel.map(o=>o.y+o.h))+M;
-      const routeY=(Math.abs(top-ay)+Math.abs(top-by))<=(Math.abs(bot-ay)+Math.abs(bot-by))?top:bot;
-      return build([[ax,routeY],[bx,routeY]]);
-    }
-  }else if(!ah&&!bh){
-    const y0=Math.min(ay,by),y1=Math.max(ay,by);
-    const rel=obs.filter(o=>o.y<y1&&o.y+o.h>y0);
-    if(rel.length){
-      const left=Math.min(...rel.map(o=>o.x))-M, right=Math.max(...rel.map(o=>o.x+o.w))+M;
-      const routeX=(Math.abs(left-ax)+Math.abs(left-bx))<=(Math.abs(right-ax)+Math.abs(right-bx))?left:right;
-      return build([[routeX,ay],[routeX,by]]);
-    }
-  }else{ // mixed: try the other elbow
-    const alt=build(ah&&!bh?[[ax,by]]:[[bx,ay]]);
-    if(pathClear(alt,obs))return alt;
-  }
-  return pts;
+  // preferred route by port orientation (straight line when the ports align)
+  let def;
+  if(ah&&bh)def=[[(ax+bx)/2,ay],[(ax+bx)/2,by]];
+  else if(!ah&&!bh)def=[[ax,(ay+by)/2],[bx,(ay+by)/2]];
+  else if(ah&&!bh)def=[[bx,ay]];
+  else def=[[ax,by]];
+  let pts=build(def);
+  if(!boxes||!boxes.length||pathClear(pts,boxes))return pts;
+  // The default crosses a box (incl. the endpoints' own boxes). Try a set of
+  // candidate routes and take the first one that stays clear of every box —
+  // e.g. jog through the gap between boxes, or detour above/below/beside them.
+  const M=18;
+  const top=Math.min(...boxes.map(o=>o.y))-M, bot=Math.max(...boxes.map(o=>o.y+o.h))+M;
+  const left=Math.min(...boxes.map(o=>o.x))-M, right=Math.max(...boxes.map(o=>o.x+o.w))+M;
+  const mx=(ax+bx)/2, my=(ay+by)/2;
+  const cands=[
+    [[bx,ay]],[[ax,by]],                       // simple L elbows
+    [[mx,ay],[mx,by]],[[ax,my],[bx,my]],       // jog through the mid-gap
+    [[ax,bot],[bx,bot]],[[ax,top],[bx,top]],   // detour under / over everything
+    [[right,ay],[right,by]],[[left,ay],[left,by]], // detour around the right / left
+  ];
+  for(const mids of cands){const c=build(mids);if(pathClear(c,boxes))return c;}
+  return pts; // nothing fully clear — best effort
 }
 function wirePath(a,b){return 'M'+wirePoints(a,b).map(p=>p.join(',')).join(' L');}
 // Build a path string, adding little semicircle hops where this wire's
@@ -422,8 +416,10 @@ function renderWires(){
     if(!A||!B)continue;
     const pa=portPos(A)[w.from.port],pb=portPos(B)[w.to.port];
     if(!pa||!pb)continue;
-    const obs=state.nodes.filter(n=>n.id!==A.id&&n.id!==B.id).map(n=>({x:n.x,y:n.y,w:LIB[n.key].w,h:LIB[n.key].h}));
-    routed.push({w,pts:wirePoints(pa,pb,obs),kind:pa.kind});
+    // all boxes are obstacles — including the wire's own endpoints, so a wire
+    // never runs hidden underneath the very boxes it connects
+    const boxes=state.nodes.map(n=>({x:n.x,y:n.y,w:LIB[n.key].w,h:LIB[n.key].h}));
+    routed.push({w,pts:wirePoints(pa,pb,boxes),kind:pa.kind});
   }
   // collect vertical segments for hop detection
   const vsegs=[];
