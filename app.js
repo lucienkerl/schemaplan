@@ -105,7 +105,7 @@ function loadAutosave(){
   try{
     const o=JSON.parse(raw);
     if(!o||!Array.isArray(o.nodes)||!Array.isArray(o.wires)||typeof o.seq!=='number')return false;
-    if(!o.nodes.every(n=>Object.hasOwn(LIB,n.key)))return false;
+    if(!o.nodes.every(n=>Object.hasOwn(LIB,n.key)&&n.fields&&typeof n.fields==='object'&&Object.values(n.fields).every(v=>v==null||typeof v==='string')))return false;
     state=o;
     return true;
   }catch(_){return false;}
