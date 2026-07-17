@@ -515,6 +515,6 @@ function seed(){
 /* ---------------- init ---------------- */
 buildPalette();
 applyView();
+if(loadAutosave()){render();}else{seed();}
 inspector();
 updateUndo();
-seed();
