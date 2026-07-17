@@ -88,6 +88,41 @@ const ICONS={
   steuerbox:'<circle cx="12" cy="12" r="8"/><path d="M12 12l3.5-2.5"/><circle cx="12" cy="12" r="1.6"/>',
 };
 Object.keys(LIB).forEach(k=>{if(!ICONS[k])console.warn('Kein Icon für Bauteiltyp:',k);});
+
+/* ---------- schematic symbols: SYMS[key](w,h) draws in box coordinates ----------
+   Stroke/colour come from the parent <g>; markup uses currentColor for small fills.
+   Components without an entry fall back to the (smaller) ICONS glyph.            */
+const SYMS={
+  // grid: L1 L2 L3 N — four short parallel conductors
+  netz:(w,h)=>{const cx=w/2,cy=h/2;let s='';for(let i=0;i<4;i++){const y=cy-12+i*8;s+=`<line x1="${cx-17}" y1="${y}" x2="${cx+17}" y2="${y}"/>`;}return s;},
+  // NH fuse: body rectangle with a conductor through it
+  hak:(w,h)=>{const cx=w/2,cy=h/2;return `<line x1="${cx}" y1="${cy-19}" x2="${cx}" y2="${cy+19}"/><rect x="${cx-8}" y="${cy-13}" width="16" height="26" rx="1.5" fill="none"/>`;},
+  // isolating switch (SLS): terminals + hinged blade
+  sls:(w,h)=>{const cx=w/2,cy=h/2;return `<line x1="${cx-19}" y1="${cy}" x2="${cx-7}" y2="${cy}"/><circle cx="${cx-7}" cy="${cy}" r="2" fill="currentColor"/><line x1="${cx-7}" y1="${cy}" x2="${cx+9}" y2="${cy-13}"/><circle cx="${cx+7}" cy="${cy}" r="2" fill="currentColor"/><line x1="${cx+7}" y1="${cy}" x2="${cx+19}" y2="${cy}"/>`;},
+  // energy meter: circle + bidirectional arrows (import/export)
+  zaehler:(w,h)=>{const cx=w/2,cy=h/2,r=Math.min(w,h)*0.34;return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none"/><line x1="${cx-5}" y1="${cy-r+4}" x2="${cx-5}" y2="${cy+r-4}"/><path d="M${cx-8},${cy-r+8} L${cx-5},${cy-r+4} L${cx-2},${cy-r+8}"/><line x1="${cx+5}" y1="${cy-r+4}" x2="${cx+5}" y2="${cy+r-4}"/><path d="M${cx+2},${cy+r-8} L${cx+5},${cy+r-4} L${cx+8},${cy+r-8}"/>`;},
+  gridmeter:(w,h)=>SYMS.zaehler(w,h),
+  // sub-distribution board: framed with busbar rows
+  uv:(w,h)=>{const x=w*0.28,ww=w*0.44,y=h*0.2,hh=h*0.6;return `<rect x="${x}" y="${y}" width="${ww}" height="${hh}" fill="none"/><line x1="${x}" y1="${y+hh/3}" x2="${x+ww}" y2="${y+hh/3}"/><line x1="${x}" y1="${y+2*hh/3}" x2="${x+ww}" y2="${y+2*hh/3}"/>`;},
+  // inverter: box split by diagonal, = (DC) over ~ (AC)
+  pvwr:(w,h)=>invSym(w,h),
+  battwr:(w,h)=>invSym(w,h,true),
+  multi:(w,h)=>invSym(w,h,true),
+  mppt:(w,h)=>{const cx=w/2,cy=h/2;return `<line x1="${cx-16}" y1="${cy-11}" x2="${cx+16}" y2="${cy-11}"/><line x1="${cx-16}" y1="${cy-6}" x2="${cx+16}" y2="${cy-6}"/><line x1="${cx-16}" y1="${cy-3}" x2="${cx+16}" y2="${cy-3}" stroke-dasharray="3 2"/><path d="M${cx-14},${cy+8} h28 M${cx-14},${cy+13} h28"/>`;},
+  // PV module: framed grid + incident-light arrow
+  pvgen:(w,h)=>{const x=w*0.3,ww=w*0.4,y=h*0.28,hh=h*0.44;let s=`<rect x="${x}" y="${y}" width="${ww}" height="${hh}" fill="none"/>`;s+=`<line x1="${x+ww/3}" y1="${y}" x2="${x+ww/3}" y2="${y+hh}"/><line x1="${x+2*ww/3}" y1="${y}" x2="${x+2*ww/3}" y2="${y+hh}"/><line x1="${x}" y1="${y+hh/2}" x2="${x+ww}" y2="${y+hh/2}"/>`;s+=`<path d="M${x-9},${y-7} l7,7 M${x-3},${y-2} l1,-5 M${x-2},${y-1} l-5,1"/>`;return s;},
+  // battery: stacked cells (alternating long/short plates)
+  battery:(w,h)=>{const cx=w/2,cy=h/2;let s='';for(let i=0;i<2;i++){const y=cy-8+i*11;s+=`<line x1="${cx-13}" y1="${y}" x2="${cx+13}" y2="${y}"/><line x1="${cx-7}" y1="${y+5}" x2="${cx+7}" y2="${y+5}"/>`;}return s;},
+  // DC busbar
+  dcbus:(w,h)=>{const cy=h/2;return `<line x1="${w*0.15}" y1="${cy}" x2="${w*0.85}" y2="${cy}" stroke-width="2.6"/>`;},
+  // consumer: resistor rectangle
+  load:(w,h)=>{const cx=w/2,cy=h/2;return `<rect x="${cx-15}" y="${cy-7}" width="30" height="14" rx="1" fill="none"/>`;},
+};
+// shared inverter symbol (box diagonal + DC "=" and AC "~")
+function invSym(w,h,acFirst){const p=Math.min(w,h)*0.22,x0=w/2-Math.min(w,h)*0.3,y0=h/2-Math.min(w,h)*0.3,x1=w/2+Math.min(w,h)*0.3,y1=h/2+Math.min(w,h)*0.3;
+  const dc=`<line x1="${w/2-16}" y1="${h*0.36}" x2="${w/2-6}" y2="${h*0.36}"/><line x1="${w/2-16}" y1="${h*0.36+4}" x2="${w/2-6}" y2="${h*0.36+4}"/>`;
+  const ac=`<path d="M${w/2+3},${h*0.64} q3,-5 6,0 t6,0" fill="none"/>`;
+  return `<line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y0}"/>`+dc+ac;}
 const KINDCOL={ac:'#e5ab45',dc:'#4aa8ec',sig:'#6fdc8c'};
 
 /* ---------------- state ---------------- */
@@ -260,13 +295,19 @@ function render(){
     g.appendChild(mk('rect',{class:'node-body',width:c.w,height:c.h,rx:7,fill:'#141922',
       stroke:c.color,'stroke-width':strokeW}));
 
-    // schematic symbol centered in the body (Phase 2 replaces ICONS with fuller symbols)
-    const isc=(Math.min(c.w,c.h)*0.5)/24, iw=24*isc;
-    const ic=mk('g',{transform:`translate(${c.w/2-iw/2},${c.h/2-iw/2}) scale(${isc})`,
-      stroke:c.color,fill:'none','stroke-width':1.7/isc,'stroke-linecap':'round','stroke-linejoin':'round'});
-    ic.style.pointerEvents='none';
-    ic.innerHTML=ICONS[n.key];
-    g.appendChild(ic);
+    // schematic symbol: a proper SYMS drawing filling the box, or an ICONS fallback
+    const sym=mk('g',{class:'node-sym',stroke:c.color,fill:'none','stroke-width':1.5,
+      'stroke-linecap':'round','stroke-linejoin':'round'});
+    sym.style.pointerEvents='none';
+    if(SYMS[n.key]){
+      sym.innerHTML=SYMS[n.key](c.w,c.h);
+    }else{
+      const isc=(Math.min(c.w,c.h)*0.5)/24, iw=24*isc;
+      sym.setAttribute('transform',`translate(${c.w/2-iw/2},${c.h/2-iw/2}) scale(${isc})`);
+      sym.setAttribute('stroke-width',1.7/isc);
+      sym.innerHTML=ICONS[n.key];
+    }
+    g.appendChild(sym);
 
     // name label ABOVE the box, value lines BELOW it (keeps text out of the symbol)
     const t1=mk('text',{class:'node-name',x:c.w/2,y:-7,'text-anchor':'middle'});
