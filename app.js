@@ -332,6 +332,7 @@ let drag=null,wiring=null,panning=null,space=false,moved=false;
 SVG.addEventListener('pointerdown',e=>{
   closeCtx();
   if(e.button===2)return; // context handled separately
+  e.preventDefault();
   const portEl=e.target.closest('.port');
   const wireEl=e.target.closest('.wirehit');
   const nodeEl=e.target.closest('#nodes g');
