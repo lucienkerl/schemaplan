@@ -88,11 +88,46 @@ const ICONS={
   steuerbox:'<circle cx="12" cy="12" r="8"/><path d="M12 12l3.5-2.5"/><circle cx="12" cy="12" r="1.6"/>',
 };
 Object.keys(LIB).forEach(k=>{if(!ICONS[k])console.warn('Kein Icon für Bauteiltyp:',k);});
+
+/* ---------- schematic symbols: SYMS[key](w,h) draws in box coordinates ----------
+   Stroke/colour come from the parent <g>; markup uses currentColor for small fills.
+   Components without an entry fall back to the (smaller) ICONS glyph.            */
+const SYMS={
+  // grid: L1 L2 L3 N — four short parallel conductors
+  netz:(w,h)=>{const cx=w/2,cy=h/2;let s='';for(let i=0;i<4;i++){const y=cy-12+i*8;s+=`<line x1="${cx-17}" y1="${y}" x2="${cx+17}" y2="${y}"/>`;}return s;},
+  // NH fuse: body rectangle with a conductor through it
+  hak:(w,h)=>{const cx=w/2,cy=h/2;return `<line x1="${cx}" y1="${cy-19}" x2="${cx}" y2="${cy+19}"/><rect x="${cx-8}" y="${cy-13}" width="16" height="26" rx="1.5" fill="none"/>`;},
+  // isolating switch (SLS): terminals + hinged blade
+  sls:(w,h)=>{const cx=w/2,cy=h/2;return `<line x1="${cx-19}" y1="${cy}" x2="${cx-7}" y2="${cy}"/><circle cx="${cx-7}" cy="${cy}" r="2" fill="currentColor"/><line x1="${cx-7}" y1="${cy}" x2="${cx+9}" y2="${cy-13}"/><circle cx="${cx+7}" cy="${cy}" r="2" fill="currentColor"/><line x1="${cx+7}" y1="${cy}" x2="${cx+19}" y2="${cy}"/>`;},
+  // energy meter: circle + bidirectional arrows (import/export)
+  zaehler:(w,h)=>{const cx=w/2,cy=h/2,r=Math.min(w,h)*0.34;return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none"/><line x1="${cx-5}" y1="${cy-r+4}" x2="${cx-5}" y2="${cy+r-4}"/><path d="M${cx-8},${cy-r+8} L${cx-5},${cy-r+4} L${cx-2},${cy-r+8}"/><line x1="${cx+5}" y1="${cy-r+4}" x2="${cx+5}" y2="${cy+r-4}"/><path d="M${cx+2},${cy+r-8} L${cx+5},${cy+r-4} L${cx+8},${cy+r-8}"/>`;},
+  gridmeter:(w,h)=>SYMS.zaehler(w,h),
+  // sub-distribution board: framed with busbar rows
+  uv:(w,h)=>{const x=w*0.28,ww=w*0.44,y=h*0.2,hh=h*0.6;return `<rect x="${x}" y="${y}" width="${ww}" height="${hh}" fill="none"/><line x1="${x}" y1="${y+hh/3}" x2="${x+ww}" y2="${y+hh/3}"/><line x1="${x}" y1="${y+2*hh/3}" x2="${x+ww}" y2="${y+2*hh/3}"/>`;},
+  // inverter: box split by diagonal, = (DC) over ~ (AC)
+  pvwr:(w,h)=>invSym(w,h),
+  battwr:(w,h)=>invSym(w,h,true),
+  multi:(w,h)=>invSym(w,h,true),
+  mppt:(w,h)=>{const cx=w/2,cy=h/2;return `<line x1="${cx-16}" y1="${cy-11}" x2="${cx+16}" y2="${cy-11}"/><line x1="${cx-16}" y1="${cy-6}" x2="${cx+16}" y2="${cy-6}"/><line x1="${cx-16}" y1="${cy-3}" x2="${cx+16}" y2="${cy-3}" stroke-dasharray="3 2"/><path d="M${cx-14},${cy+8} h28 M${cx-14},${cy+13} h28"/>`;},
+  // PV module: framed grid + incident-light arrow
+  pvgen:(w,h)=>{const x=w*0.3,ww=w*0.4,y=h*0.28,hh=h*0.44;let s=`<rect x="${x}" y="${y}" width="${ww}" height="${hh}" fill="none"/>`;s+=`<line x1="${x+ww/3}" y1="${y}" x2="${x+ww/3}" y2="${y+hh}"/><line x1="${x+2*ww/3}" y1="${y}" x2="${x+2*ww/3}" y2="${y+hh}"/><line x1="${x}" y1="${y+hh/2}" x2="${x+ww}" y2="${y+hh/2}"/>`;s+=`<path d="M${x-9},${y-7} l7,7 M${x-3},${y-2} l1,-5 M${x-2},${y-1} l-5,1"/>`;return s;},
+  // battery: stacked cells (alternating long/short plates)
+  battery:(w,h)=>{const cx=w/2,cy=h/2;let s='';for(let i=0;i<2;i++){const y=cy-8+i*11;s+=`<line x1="${cx-13}" y1="${y}" x2="${cx+13}" y2="${y}"/><line x1="${cx-7}" y1="${y+5}" x2="${cx+7}" y2="${y+5}"/>`;}return s;},
+  // DC busbar
+  dcbus:(w,h)=>{const cy=h/2;return `<line x1="${w*0.15}" y1="${cy}" x2="${w*0.85}" y2="${cy}" stroke-width="2.6"/>`;},
+  // consumer: resistor rectangle
+  load:(w,h)=>{const cx=w/2,cy=h/2;return `<rect x="${cx-15}" y="${cy-7}" width="30" height="14" rx="1" fill="none"/>`;},
+};
+// shared inverter symbol (box diagonal + DC "=" and AC "~")
+function invSym(w,h,acFirst){const p=Math.min(w,h)*0.22,x0=w/2-Math.min(w,h)*0.3,y0=h/2-Math.min(w,h)*0.3,x1=w/2+Math.min(w,h)*0.3,y1=h/2+Math.min(w,h)*0.3;
+  const dc=`<line x1="${w/2-16}" y1="${h*0.36}" x2="${w/2-6}" y2="${h*0.36}"/><line x1="${w/2-16}" y1="${h*0.36+4}" x2="${w/2-6}" y2="${h*0.36+4}"/>`;
+  const ac=`<path d="M${w/2+3},${h*0.64} q3,-5 6,0 t6,0" fill="none"/>`;
+  return `<line x1="${x0}" y1="${y1}" x2="${x1}" y2="${y0}"/>`+dc+ac;}
 const KINDCOL={ac:'#e5ab45',dc:'#4aa8ec',sig:'#6fdc8c'};
 
 /* ---------------- state ---------------- */
-function defaultProject(){return {betreiberName:'',betreiberAdresse:'',standortAdresse:'',
-  erstellerFirma:'',erstellerOrt:'',datum:''};}
+function defaultProject(){return {betreiber:'',anschrift:'',ersteller:'',datum:'',
+  zaehlerNr:'',mastrNr:''};}
 let state={nodes:[],wires:[],seq:1,project:defaultProject()};
 let view={x:120,y:80,k:1};
 let sel=null;        // {type:'node'|'wire', id}
@@ -259,19 +294,27 @@ function render(){
 
     g.appendChild(mk('rect',{class:'node-body',width:c.w,height:c.h,rx:7,fill:'#141922',
       stroke:c.color,'stroke-width':strokeW}));
-    g.appendChild(mk('rect',{width:c.w,height:3,rx:1.5,fill:c.color,opacity:.9}));
 
-    const ic=mk('g',{transform:'translate(6,6) scale(0.42)',stroke:c.color,fill:'none','stroke-width':1.8,
+    // schematic symbol: a proper SYMS drawing filling the box, or an ICONS fallback
+    const sym=mk('g',{class:'node-sym',stroke:c.color,color:c.color,fill:'none','stroke-width':1.5,
       'stroke-linecap':'round','stroke-linejoin':'round'});
-    ic.style.pointerEvents='none';
-    ic.innerHTML=ICONS[n.key];
-    g.appendChild(ic);
+    sym.style.pointerEvents='none';
+    if(SYMS[n.key]){
+      sym.innerHTML=SYMS[n.key](c.w,c.h);
+    }else{
+      const isc=(Math.min(c.w,c.h)*0.5)/24, iw=24*isc;
+      sym.setAttribute('transform',`translate(${c.w/2-iw/2},${c.h/2-iw/2}) scale(${isc})`);
+      sym.setAttribute('stroke-width',1.7/isc);
+      sym.innerHTML=ICONS[n.key];
+    }
+    g.appendChild(sym);
 
-    const t1=mk('text',{class:'node-label',x:c.w/2,y:19,'text-anchor':'middle'});
+    // name label ABOVE the box, value lines BELOW it (keeps text out of the symbol)
+    const t1=mk('text',{class:'node-name',x:c.w/2,y:-7,'text-anchor':'middle'});
     t1.textContent=n.fields.name||c.name;g.appendChild(t1);
     const subs=c.fields.filter(f=>f[0]!=='name').map(f=>n.fields[f[0]]).filter(v=>v&&v.trim());
     subs.slice(0,2).forEach((s,i)=>{
-      const t=mk('text',{class:'node-sub',x:c.w/2,y:34+i*11,'text-anchor':'middle'});
+      const t=mk('text',{class:'node-val',x:c.w/2,y:c.h+13+i*11,'text-anchor':'middle'});
       t.textContent=s;g.appendChild(t);
     });
 
@@ -556,12 +599,12 @@ function openProjectModal(){
   const p=state.project;
   const esc=(s)=>(s||'').replace(/"/g,'&quot;');
   const fields=[
-    ['betreiberName','Betreiber – Name'],
-    ['betreiberAdresse','Betreiber – Adresse'],
-    ['standortAdresse','Anlagenstandort – Adresse'],
-    ['erstellerFirma','Anlagenerrichter – Firma'],
-    ['erstellerOrt','Anlagenerrichter – Ort'],
+    ['betreiber','Anlagenbetreiber'],
+    ['anschrift','Anschrift'],
+    ['ersteller','Ersteller'],
     ['datum','Datum'],
+    ['zaehlerNr','Zähler-Nr.'],
+    ['mastrNr','MaStR-Nr.'],
   ];
   bd.innerHTML=`<div class="modal">
     <h2>Projektdaten</h2>
@@ -593,60 +636,109 @@ function openProjectModal(){
 }
 el('project').onclick=openProjectModal;
 
-/* ---------------- export ---------------- */
-function legendSVG(){
-  const rows=[['AC-Leitung',KINDCOL.ac],['DC-Leitung',KINDCOL.dc],['Signal / Steuerung',KINDCOL.sig]];
-  let out='<g font-family="ui-monospace,monospace" font-size="11" fill="#8896a6">';
-  rows.forEach((r,i)=>{
-    const ry=i*20;
-    out+=`<line x1="0" y1="${ry}" x2="22" y2="${ry}" stroke="${r[1]}" stroke-width="3" stroke-linecap="round"/>`;
-    out+=`<text x="30" y="${ry+4}">${r[0]}</text>`;
+/* ---------------- export (light DIN-style sheet) ---------------- */
+const XESC=(s)=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// "Hinweise / auszufüllen" box (bottom-left), like the reference sheet
+function notesSVG(w,h){
+  const notes=[
+    'Z1 = Zweirichtungszähler am Netzverknüpfungspunkt (Bezug + Überschusslieferung).',
+    'NA-Schutz nach VDE-AR-N 4105 in den Wechselrichtern integriert (>30 kVA: externer NA-Schutz).',
+    'Kennwerte ergänzen: kWp, kVA, kWh, Fabrikat/Typ, Zählernummer, Zählpfeilrichtung.',
+    'Ggf. Steuerung nach §14a EnWG / NSGM ergänzen (Steuerbox / EMS).',
+  ];
+  let out=`<rect x="0" y="0" width="${w}" height="${h}" fill="none" stroke="#c7ccd3"/>`;
+  out+=`<text x="12" y="22" font-family="Inter,sans-serif" font-size="11" font-weight="600" fill="#1f2937">Hinweise / auszufüllen:</text>`;
+  notes.forEach((t,i)=>{
+    out+=`<text x="14" y="${44+i*20}" font-family="Inter,sans-serif" font-size="9.5" fill="#374151">· ${XESC(t)}</text>`;
   });
-  return out+'</g>';
+  return out;
 }
+// title block (bottom-right)
 function schriftfeldSVG(w,h){
   const p=state.project;
-  const esc=(s)=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
-  const row=(label,val,ry)=>
-    `<text x="10" y="${ry}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">${label}</text>`+
-    `<text x="10" y="${ry+15}" font-family="Inter,sans-serif" font-size="12" fill="#e8eef5">${esc(val)||'—'}</text>`;
-  const third=h/3;
-  let out='<g>';
-  out+=`<rect x="0" y="0" width="${w}" height="${h}" fill="none" stroke="#2a3441"/>`;
-  out+=`<line x1="0" y1="${third}" x2="${w}" y2="${third}" stroke="#2a3441"/>`;
-  out+=`<line x1="0" y1="${2*third}" x2="${w}" y2="${2*third}" stroke="#2a3441"/>`;
-  out+=`<line x1="${w*0.6}" y1="${2*third}" x2="${w*0.6}" y2="${h}" stroke="#2a3441"/>`;
-  out+=`<line x1="${w*0.8}" y1="${2*third}" x2="${w*0.8}" y2="${h}" stroke="#2a3441"/>`;
-  out+=row('Betreiber',[p.betreiberName,p.betreiberAdresse].filter(Boolean).join(' · '),18);
-  out+=row('Anlagenstandort',p.standortAdresse,third+18);
-  out+=row('Anlagenerrichter',[p.erstellerFirma,p.erstellerOrt].filter(Boolean).join(', '),2*third+18);
-  out+=`<text x="${w*0.6+10}" y="${2*third+18}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">Datum</text>`;
-  out+=`<text x="${w*0.6+10}" y="${2*third+33}" font-family="Inter,sans-serif" font-size="12" fill="#e8eef5">${esc(p.datum)||'—'}</text>`;
-  out+=`<text x="${w*0.8+10}" y="${2*third+18}" font-family="ui-monospace,monospace" font-size="9.5" fill="#5b6674">Unterschrift Anlagenerrichter</text>`;
-  out+=`<line x1="${w*0.8+10}" y1="${h-14}" x2="${w-10}" y2="${h-14}" stroke="#5b6674"/>`;
-  return out+'</g>';
+  const midX=w*0.52, r1=44, r2=76, div=92;
+  // full-width field: label + value/underline
+  const wide=(label,val,y)=>{
+    let s=`<text x="12" y="${y}" font-family="Inter,sans-serif" font-size="9.5" fill="#6b7280">${label}</text>`;
+    const vx=110;
+    if(val&&val.trim()) s+=`<text x="${vx}" y="${y}" font-family="Inter,sans-serif" font-size="11" fill="#111827">${XESC(val)}</text>`;
+    s+=`<line x1="${vx}" y1="${y+4}" x2="${w-12}" y2="${y+4}" stroke="#c7ccd3"/>`;
+    return s;
+  };
+  // cell field in a 2-column grid: label above, value/underline below
+  const cell=(label,val,x,y,cw)=>{
+    let s=`<text x="${x}" y="${y}" font-family="Inter,sans-serif" font-size="9.5" fill="#6b7280">${label}</text>`;
+    if(val&&val.trim()) s+=`<text x="${x}" y="${y+15}" font-family="Inter,sans-serif" font-size="11" fill="#111827">${XESC(val)}</text>`;
+    s+=`<line x1="${x}" y1="${y+19}" x2="${x+cw}" y2="${y+19}" stroke="#c7ccd3"/>`;
+    return s;
+  };
+  let out=`<rect x="0" y="0" width="${w}" height="${h}" fill="none" stroke="#9ca3af"/>`;
+  out+=wide('Anlagenbetreiber',p.betreiber,r1);
+  out+=wide('Anschrift',p.anschrift,r2);
+  out+=`<line x1="0" y1="${div}" x2="${w}" y2="${div}" stroke="#c7ccd3"/>`;
+  out+=`<line x1="${midX}" y1="${div}" x2="${midX}" y2="${h}" stroke="#c7ccd3"/>`;
+  out+=cell('Ersteller',p.ersteller,12,div+20,midX-24);
+  out+=cell('Zähler-Nr.',p.zaehlerNr,midX+12,div+20,w-midX-24);
+  out+=cell('Datum',p.datum,12,div+46,midX-24);
+  out+=cell('MaStR-Nr.',p.mastrNr,midX+12,div+46,w-midX-24);
+  return out;
 }
 function serializeSVG(){
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
   for(const n of state.nodes){const c=LIB[n.key];x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x+c.w);y1=Math.max(y1,n.y+c.h);}
   if(!state.nodes.length){x0=0;y0=0;x1=400;y1=300;}
-  const pad=48;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const dw=x1-x0,dh=y1-y0;
-  const TITLE_H=40,LEGEND_H=76,SCHRIFT_H=120;
-  const w=dw,h=TITLE_H+dh+LEGEND_H+SCHRIFT_H;
+  const pad=56;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const dw=x1-x0,dh=y1-y0;
+  // sheet layout (light, DIN-style): frame + title + diagram + notes/Schriftfeld row
+  const M=22, TITLE_H=52, GAP=18, BOTTOM_H=158, SCHRIFT_W=328, NGAP=22;
+  const contentW=Math.max(dw, 820);
+  const W=contentW+2*M;
+  const H=M+TITLE_H+dh+GAP+BOTTOM_H+M;
+  const diagX=M+(contentW-dw)/2;               // centre diagram in the content area
+  const diagY=M+TITLE_H;
+  const rowY=M+TITLE_H+dh+GAP;
+  const schriftX=W-M-SCHRIFT_W;
+  const notesW=schriftX-M-NGAP;
+
+  // diagram clone, recoloured for a light background
   const clone=VP.cloneNode(true);
   const tw=clone.querySelector('#tempwire');if(tw)clone.removeChild(tw);
-  // strip invisible hit paths/circles from clone
   clone.querySelectorAll('.wirehit,.port').forEach(e=>e.remove());
-  clone.setAttribute('transform',`translate(${-x0},${-y0+TITLE_H})`);
+  clone.setAttribute('transform',`translate(${diagX-x0},${diagY-y0})`);
+
+  // reference-style export colours: mostly black, colour only for inverters/PV/battery
+  const INK='#1f2937';
+  const expCol=(key)=>key==='pvwr'?'#2563eb':key==='pvgen'?'#16a34a'
+    :(key==='battery'||key==='battwr'||key==='multi')?'#dc2626':INK;
+  clone.querySelectorAll('#nodes g.node').forEach(g=>{
+    const n=state.nodes.find(x=>x.id===g.dataset.id);if(!n)return;
+    const col=expCol(n.key);
+    g.querySelectorAll('.node-body').forEach(e=>e.setAttribute('stroke',col));
+    g.querySelectorAll('.node-sym').forEach(e=>{e.setAttribute('stroke',col);e.setAttribute('color',col);});
+  });
+  // wires + junction dots → near-black; hollow (unused) port dots → white
+  clone.querySelectorAll('#wires path').forEach(p=>{const s=p.getAttribute('stroke');if(s&&s!=='transparent')p.setAttribute('stroke',INK);});
+  clone.querySelectorAll('circle').forEach(c=>{
+    const f=c.getAttribute('fill');
+    if(c.getAttribute('stroke'))c.setAttribute('stroke',INK);
+    if(f==='#0d1017')c.setAttribute('fill','#ffffff');       // unused port: hollow
+    else if(f&&f!=='none'&&f!=='#ffffff')c.setAttribute('fill',INK); // used port: filled dot
+  });
+
   const css=document.querySelector('style').textContent;
-  const title=`<text x="${w/2}" y="26" text-anchor="middle" font-family="Inter,sans-serif" font-size="15" font-weight="600" fill="#e8eef5">Übersichtsschaltplan nach VDE-AR-N 4105</text>`;
-  const legend=`<g transform="translate(16,${TITLE_H+dh+16})">${legendSVG()}</g>`;
-  const schrift=`<g transform="translate(0,${TITLE_H+dh+LEGEND_H})">${schriftfeldSVG(w,SCHRIFT_H)}</g>`;
-  const svg=`<svg xmlns="${SVGNS}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
-    +`<style>${css}</style>`
-    +`<rect width="${w}" height="${h}" fill="#0d1017"/>`
-    +title+clone.outerHTML+legend+schrift+`</svg>`;
-  return {svg,w,h};
+  // light-theme overrides (win over the embedded dark stylesheet + node-body fill attr)
+  const lightCss=`.node-body{fill:#ffffff}.node-name{fill:#111827}.node-val{fill:#4b5563}.port-label{fill:#6b7280}`;
+
+  const title=`<text x="${M+14}" y="${M+26}" font-family="Inter,sans-serif" font-size="16" font-weight="700" fill="#111827">Übersichtsschaltplan – PV-Anlage mit Batteriespeicher</text>`
+    +`<text x="${M+14}" y="${M+44}" font-family="Inter,sans-serif" font-size="10.5" fill="#6b7280">Anschluss gem. VDE-AR-N 4105 / 4100 · erstellt mit Schemaplan</text>`;
+  const frame=`<rect x="${M}" y="${M}" width="${W-2*M}" height="${H-2*M}" fill="none" stroke="#111827" stroke-width="1.2"/>`;
+  const notes=`<g transform="translate(${M},${rowY})">${notesSVG(notesW,BOTTOM_H)}</g>`;
+  const schrift=`<g transform="translate(${schriftX},${rowY})">${schriftfeldSVG(SCHRIFT_W,BOTTOM_H)}</g>`;
+
+  const svg=`<svg xmlns="${SVGNS}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
+    +`<style>${css}${lightCss}</style>`
+    +`<rect width="${W}" height="${H}" fill="#ffffff"/>`
+    +frame+title+clone.outerHTML+notes+schrift+`</svg>`;
+  return {svg,w:W,h:H};
 }
 el('exportSvg').onclick=()=>{const {svg}=serializeSVG();dl(new Blob([svg],{type:'image/svg+xml'}),'schaltplan.svg');showToast('SVG exportiert');};
 el('png').onclick=()=>{
