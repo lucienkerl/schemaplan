@@ -147,11 +147,16 @@ function applyView(){VP.setAttribute('transform',`translate(${view.x},${view.y})
 const snap=(v)=>Math.round(v/12)*12;
 
 /* ---------------- add / remove ---------------- */
+function fillFields(c){
+  const fields={};
+  c.fields.forEach(f=>{fields[f[0]]=f[2].startsWith('__')?'':f[2];});
+  return fields;
+}
 function addNode(key,wx,wy){
   pushHistory();
   const c=LIB[key];
   if(wx==null){const r=SVG.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);wx=p.x-c.w/2;wy=p.y-c.h/2;}
-  const fields={};c.fields.forEach(f=>fields[f[0]]=f[2]);
+  const fields=fillFields(c);
   const n={id:'n'+(state.seq++),key,x:snap(wx),y:snap(wy),fields};
   state.nodes.push(n);sel={type:'node',id:n.id};render();inspector();
   hint.style.display='none';showToast(c.name+' hinzugefügt');
@@ -299,7 +304,8 @@ function inspector(){
   const c=LIB[n.key];
   let html=`<div class="insp-head"><span class="dot" style="background:${c.color}"></span><span>${c.name}</span></div>`;
   for(const f of c.fields){
-    html+=`<div class="field"><label>${f[1]}</label><input data-k="${f[0]}" value="${(n.fields[f[0]]||'').replace(/"/g,'&quot;')}"></div>`;
+    const ph=f[2].startsWith('__')?f[2].replace(/"/g,'&quot;'):'';
+    html+=`<div class="field"><label>${f[1]}</label><input data-k="${f[0]}" placeholder="${ph}" value="${(n.fields[f[0]]||'').replace(/"/g,'&quot;')}"></div>`;
   }
   html+=`<button class="del" id="delnode"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Baustein löschen</button>`;
   body.innerHTML=html;
@@ -503,7 +509,7 @@ function dl(blob,name){const a=document.createElement('a');a.href=URL.createObje
 /* ---------------- seed example ---------------- */
 function seed(){
   const ids={};
-  const add=(k,x,y)=>{const c=LIB[k];const fields={};c.fields.forEach(f=>fields[f[0]]=f[2]);
+  const add=(k,x,y)=>{const c=LIB[k];const fields=fillFields(c);
     const n={id:'n'+(state.seq++),key:k,x,y,fields};state.nodes.push(n);ids[k]=n.id;};
   add('netz',0,150);add('hak',168,150);add('sls',312,150);add('zaehler',456,145);add('uv',624,144);
   add('load',468,300);add('pvwr',612,312);add('pvgen',613,432);add('multi',792,290);add('battery',960,438);
