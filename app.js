@@ -877,7 +877,8 @@ function serializeSVG(){
 
   const css=document.querySelector('style').textContent;
   // light-theme overrides (win over the embedded dark stylesheet + node-body fill attr)
-  const lightCss=`.node-body{fill:#ffffff}.node-name{fill:#111827}.node-val{fill:#4b5563}.port-label{fill:#6b7280}`;
+  const lightCss=`.node-body{fill:#ffffff}.node-name{fill:#111827}.node-val{fill:#4b5563}.port-label{fill:#6b7280}`
+    +`.node-name,.node-val,.port-label{stroke:#ffffff}`; // white halo on the light export sheet
 
   const title=`<text x="${M+14}" y="${M+26}" font-family="Inter,sans-serif" font-size="16" font-weight="700" fill="#111827">Übersichtsschaltplan – PV-Anlage mit Batteriespeicher</text>`
     +`<text x="${M+14}" y="${M+44}" font-family="Inter,sans-serif" font-size="10.5" fill="#6b7280">Anschluss gem. VDE-AR-N 4105 / 4100 · erstellt mit Schemaplan</text>`;
