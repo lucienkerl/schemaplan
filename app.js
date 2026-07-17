@@ -67,6 +67,27 @@ const LIB={
     fields:[['name','Bezeichnung','Steuerbox'],['note','FRE / Node','']],
     ports:[{id:'sig',label:'Steuer',side:'l',kind:'sig'},{id:'net',label:'FNN',side:'t',kind:'sig'}]},
 };
+const ICONS={
+  netz:'<path d="M12 2l7 6-2 3H7L5 8z"/><path d="M12 11v11M8 22h8M9 16h6"/>',
+  hak:'<rect x="8" y="4" width="8" height="13" rx="1.5"/><path d="M12 17v3M9 22h6"/>',
+  sls:'<path d="M12 3v7"/><path d="M7.5 8a6 6 0 1 0 9 0"/>',
+  zaehler:'<circle cx="12" cy="13" r="8"/><path d="M12 13l3.5-3.5M8 6h8"/>',
+  gridmeter:'<circle cx="12" cy="13" r="8"/><path d="M9 13h6M12 10l-3 3 3 3"/>',
+  uv:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 16h16M10 4v16"/>',
+  pvwr:'<rect x="4" y="7" width="16" height="11" rx="2"/><path d="M7 13c1-2.5 2-2.5 3 0s2 2.5 3 0 2-2.5 3 0"/>',
+  pvgen:'<rect x="4" y="6" width="16" height="12" rx="1"/><path d="M4 10.5h16M4 15h16M10.5 6v12M15.5 6v12"/>',
+  mppt:'<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M12 8v6"/><path d="M9 11l3 3 3-3"/>',
+  multi:'<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M9 10l-2.5 2 2.5 2"/><path d="M15 10l2.5 2-2.5 2"/>',
+  battwr:'<rect x="4" y="8" width="13" height="9" rx="1.5"/><path d="M17 11v3"/><path d="M8 8v-2M12 8v-2"/>',
+  battery:'<rect x="3" y="8" width="16" height="9" rx="1.5"/><path d="M19 11v3"/><path d="M7 8v9M11 8v9M15 8v9"/>',
+  dcbus:'<path d="M3 12h18"/><path d="M7 8v8M12 8v8M17 8v8"/>',
+  cerbo:'<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4"/>',
+  wallbox:'<rect x="3" y="9" width="13" height="8" rx="2"/><circle cx="7" cy="19" r="1.6"/><circle cx="15" cy="19" r="1.6"/><path d="M16 12h3l2 3v2h-2"/>',
+  load:'<circle cx="12" cy="12" r="8"/><path d="M9 10v4M15 10v4"/><path d="M9 15a3 3 0 0 0 6 0"/>',
+  backup:'<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M13 7l-4.5 6.5H12L11 20l5.5-7.5H13z"/>',
+  steuerbox:'<circle cx="12" cy="12" r="8"/><path d="M12 12l3.5-2.5"/><circle cx="12" cy="12" r="1.6"/>',
+};
+Object.keys(LIB).forEach(k=>{if(!ICONS[k])console.warn('Kein Icon für Bauteiltyp:',k);});
 const KINDCOL={ac:'#e5ab45',dc:'#4aa8ec',sig:'#6fdc8c'};
 
 /* ---------------- state ---------------- */
