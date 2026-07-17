@@ -523,8 +523,9 @@ function fit(){
 }
 el('clear').onclick=()=>{
   if(!state.nodes.length)return;
-  if(confirm('Alle Bausteine und Verbindungen löschen?')){pushHistory();
-    state.nodes=[];state.wires=[];sel=null;render();inspector();showToast('Zeichenfläche geleert');}
+  pushHistory();
+  state.nodes=[];state.wires=[];sel=null;render();inspector();
+  showToast('Zeichenfläche geleert · Strg+Z zum Rückgängigmachen');
 };
 
 /* ---------------- save / load ---------------- */
