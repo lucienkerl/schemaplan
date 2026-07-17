@@ -123,13 +123,24 @@ el('redo').onclick=redo;
 
 /* ---------------- autosave ---------------- */
 const AUTOSAVE_KEY='schemaplan.autosave.v1';
-let autosaveT;
+let autosaveT=null;
+function writeAutosave(){
+  try{localStorage.setItem(AUTOSAVE_KEY,JSON.stringify(state));}catch(_){}
+}
 function scheduleAutosave(){
   clearTimeout(autosaveT);
-  autosaveT=setTimeout(()=>{
-    try{localStorage.setItem(AUTOSAVE_KEY,JSON.stringify(state));}catch(_){}
-  },500);
+  autosaveT=setTimeout(()=>{autosaveT=null;writeAutosave();},500);
 }
+// Flush a still-pending debounced write immediately, so edits made within the
+// last 500ms aren't lost if the tab is closed/reloaded/backgrounded before the
+// timer fires. No-op when nothing is pending.
+function flushAutosave(){
+  if(!autosaveT)return;
+  clearTimeout(autosaveT);autosaveT=null;
+  writeAutosave();
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushAutosave();});
+window.addEventListener('pagehide',flushAutosave);
 function loadAutosave(){
   let raw;
   try{raw=localStorage.getItem(AUTOSAVE_KEY);}catch(_){return false;}
