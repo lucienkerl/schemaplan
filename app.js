@@ -188,7 +188,11 @@ function fillFields(c){
 function addNode(key,wx,wy){
   pushHistory();
   const c=LIB[key];
-  if(wx==null){const r=SVG.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);wx=p.x-c.w/2;wy=p.y-c.h/2;}
+  if(wx==null){
+    const r=SVG.getBoundingClientRect();const p=toWorld(r.left+r.width/2,r.top+r.height/2);
+    wx=p.x-c.w/2+addOffset;wy=p.y-c.h/2+addOffset;
+    addOffset=(addOffset+18)%108;
+  }
   const fields=fillFields(c);
   const n={id:'n'+(state.seq++),key,x:snap(wx),y:snap(wy),fields};
   state.nodes.push(n);sel={type:'node',id:n.id};render();inspector();
@@ -395,7 +399,7 @@ function dupNode(id){const n=state.nodes.find(x=>x.id===id);if(!n)return;pushHis
 document.addEventListener('pointerdown',e=>{if(ctxEl&&!ctxEl.contains(e.target))closeCtx();},true);
 
 /* ---------------- interaction ---------------- */
-let drag=null,wiring=null,panning=null,space=false,moved=false;
+let drag=null,wiring=null,panning=null,space=false,moved=false,addOffset=0;
 
 SVG.addEventListener('pointerdown',e=>{
   closeCtx();
