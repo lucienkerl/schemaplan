@@ -345,46 +345,102 @@ function render(){
   }
   updateStats();
 }
-// Orthogonal (right-angle) routing: short stub out of each port, then H/V
-// segments. When the two ports share a Y (or X), it collapses to a straight
-// horizontal (or vertical) line — matching the VDE-AR-N reference style.
-function wirePath(a,b){
+// Does an axis-aligned segment (H or V) intersect the interior of rect o?
+function segHitsRect(x0,y0,x1,y1,o){
+  const rx0=o.x,ry0=o.y,rx1=o.x+o.w,ry1=o.y+o.h;
+  if(y0===y1)return y0>ry0&&y0<ry1&&Math.min(x0,x1)<rx1&&Math.max(x0,x1)>rx0;
+  return x0>rx0&&x0<rx1&&Math.min(y0,y1)<ry1&&Math.max(y0,y1)>ry0;
+}
+function pathClear(pts,obs){
+  for(let i=0;i<pts.length-1;i++)for(const o of obs)
+    if(segHitsRect(pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1],o))return false;
+  return true;
+}
+// Orthogonal routing that steers around node boxes (obs). Aligned ports still
+// give a straight line; otherwise it detours above/below (or beside) obstacles.
+function wirePoints(a,b,obs){
   const s=16;
   const ah=(a.side==='l'||a.side==='r'), bh=(b.side==='l'||b.side==='r');
   const ax=a.x+(a.side==='l'?-s:a.side==='r'?s:0), ay=a.y+(a.side==='t'?-s:a.side==='b'?s:0);
   const bx=b.x+(b.side==='l'?-s:b.side==='r'?s:0), by=b.y+(b.side==='t'?-s:b.side==='b'?s:0);
-  const pts=[[a.x,a.y],[ax,ay]];
-  if(ah&&bh){const mx=(ax+bx)/2;pts.push([mx,ay],[mx,by]);}       // H ports: vertical jog at mid-x
-  else if(!ah&&!bh){const my=(ay+by)/2;pts.push([ax,my],[bx,my]);}// V ports: horizontal jog at mid-y
-  else if(ah&&!bh){pts.push([bx,ay]);}                            // H→V elbow
-  else{pts.push([ax,by]);}                                        // V→H elbow
-  pts.push([bx,by],[b.x,b.y]);
-  // drop consecutive duplicate points (keeps a clean straight line when aligned)
-  const clean=pts.filter((p,i)=>i===0||p[0]!==pts[i-1][0]||p[1]!==pts[i-1][1]);
-  return 'M'+clean.map(p=>p.join(',')).join(' L');
+  const build=(mids)=>{const p=[[a.x,a.y],[ax,ay],...mids,[bx,by],[b.x,b.y]];
+    return p.filter((q,i)=>i===0||q[0]!==p[i-1][0]||q[1]!==p[i-1][1]);};
+  let mids;
+  if(ah&&bh)mids=[[(ax+bx)/2,ay],[(ax+bx)/2,by]];
+  else if(!ah&&!bh)mids=[[ax,(ay+by)/2],[bx,(ay+by)/2]];
+  else if(ah&&!bh)mids=[[bx,ay]];
+  else mids=[[ax,by]];
+  let pts=build(mids);
+  if(!obs||!obs.length||pathClear(pts,obs))return pts;
+  const M=20;
+  if(ah&&bh){
+    const x0=Math.min(ax,bx),x1=Math.max(ax,bx);
+    const rel=obs.filter(o=>o.x<x1&&o.x+o.w>x0);
+    if(rel.length){
+      const top=Math.min(...rel.map(o=>o.y))-M, bot=Math.max(...rel.map(o=>o.y+o.h))+M;
+      const routeY=(Math.abs(top-ay)+Math.abs(top-by))<=(Math.abs(bot-ay)+Math.abs(bot-by))?top:bot;
+      return build([[ax,routeY],[bx,routeY]]);
+    }
+  }else if(!ah&&!bh){
+    const y0=Math.min(ay,by),y1=Math.max(ay,by);
+    const rel=obs.filter(o=>o.y<y1&&o.y+o.h>y0);
+    if(rel.length){
+      const left=Math.min(...rel.map(o=>o.x))-M, right=Math.max(...rel.map(o=>o.x+o.w))+M;
+      const routeX=(Math.abs(left-ax)+Math.abs(left-bx))<=(Math.abs(right-ax)+Math.abs(right-bx))?left:right;
+      return build([[routeX,ay],[routeX,by]]);
+    }
+  }else{ // mixed: try the other elbow
+    const alt=build(ah&&!bh?[[ax,by]]:[[bx,ay]]);
+    if(pathClear(alt,obs))return alt;
+  }
+  return pts;
+}
+function wirePath(a,b){return 'M'+wirePoints(a,b).map(p=>p.join(',')).join(' L');}
+// Build a path string, adding little semicircle hops where this wire's
+// horizontal segments cross other wires' vertical segments.
+function pathWithHops(pts,myRi,vsegs){
+  const R=5;let d='M'+pts[0].join(',');
+  for(let i=0;i<pts.length-1;i++){
+    const p=pts[i],q=pts[i+1];
+    if(p[1]===q[1]&&p[0]!==q[0]){
+      const y=p[1],dir=q[0]>p[0]?1:-1,lo=Math.min(p[0],q[0]),hi=Math.max(p[0],q[0]);
+      let xs=vsegs.filter(v=>v.ri!==myRi&&v.x>lo+R&&v.x<hi-R&&v.y0<y-0.5&&v.y1>y+0.5).map(v=>v.x);
+      xs=[...new Set(xs)].sort((m,n)=>dir*(m-n));
+      for(const xh of xs){
+        d+=' L'+(xh-dir*R)+','+y+' A'+R+','+R+' 0 0 '+(dir>0?1:0)+' '+(xh+dir*R)+','+y;
+      }
+      d+=' L'+q.join(',');
+    }else d+=' L'+q.join(',');
+  }
+  return d;
 }
 function renderWires(){
   gWires.innerHTML='';
+  const routed=[];
   for(const w of state.wires){
     const A=state.nodes.find(n=>n.id===w.from.node),B=state.nodes.find(n=>n.id===w.to.node);
     if(!A||!B)continue;
     const pa=portPos(A)[w.from.port],pb=portPos(B)[w.to.port];
     if(!pa||!pb)continue;
-    const d=wirePath(pa,pb);
-    const col=KINDCOL[pa.kind]||'#94a3b4';
-    const selw=(sel&&sel.type==='wire'&&sel.id===w.id);
-    // fat invisible hit path
-    const hit=mk('path',{d,fill:'none',stroke:'transparent','stroke-width':16});
-    hit.style.cursor='pointer';hit.dataset.wire=w.id;hit.classList.add('wirehit');
-    gWires.appendChild(hit);
-    // visible path
-    const path=mk('path',{d,fill:'none',stroke:col,'stroke-width':selw?3.2:2,
-      'stroke-linecap':'round'});
-    if(selw)path.setAttribute('stroke-dasharray','1 0');
-    path.style.pointerEvents='none';
-    if(selw){path.setAttribute('filter','drop-shadow(0 0 4px '+col+')');}
-    gWires.appendChild(path);
+    const obs=state.nodes.filter(n=>n.id!==A.id&&n.id!==B.id).map(n=>({x:n.x,y:n.y,w:LIB[n.key].w,h:LIB[n.key].h}));
+    routed.push({w,pts:wirePoints(pa,pb,obs),kind:pa.kind});
   }
+  // collect vertical segments for hop detection
+  const vsegs=[];
+  routed.forEach((r,ri)=>{for(let i=0;i<r.pts.length-1;i++){const p=r.pts[i],q=r.pts[i+1];
+    if(p[0]===q[0]&&p[1]!==q[1])vsegs.push({ri,x:p[0],y0:Math.min(p[1],q[1]),y1:Math.max(p[1],q[1])});}});
+  routed.forEach((r,ri)=>{
+    const d=pathWithHops(r.pts,ri,vsegs);
+    const col=KINDCOL[r.kind]||'#94a3b4';
+    const selw=(sel&&sel.type==='wire'&&sel.id===r.w.id);
+    const hit=mk('path',{d,fill:'none',stroke:'transparent','stroke-width':16});
+    hit.style.cursor='pointer';hit.dataset.wire=r.w.id;hit.classList.add('wirehit');
+    gWires.appendChild(hit);
+    const path=mk('path',{d,fill:'none',stroke:col,'stroke-width':selw?3.2:2,'stroke-linecap':'round'});
+    path.style.pointerEvents='none';
+    if(selw)path.setAttribute('filter','drop-shadow(0 0 4px '+col+')');
+    gWires.appendChild(path);
+  });
 }
 function updateStats(){
   el('stat-nodes').textContent=state.nodes.length+(state.nodes.length===1?' Baustein':' Bausteine');
