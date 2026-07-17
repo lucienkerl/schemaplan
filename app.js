@@ -515,6 +515,45 @@ el('load').onclick=()=>{
     rd.readAsText(f);};inp.click();
 };
 
+/* ---------------- project modal ---------------- */
+function openProjectModal(){
+  const bd=document.createElement('div');bd.className='modal-backdrop';
+  const p=state.project;
+  const esc=(s)=>(s||'').replace(/"/g,'&quot;');
+  const fields=[
+    ['betreiberName','Betreiber – Name'],
+    ['betreiberAdresse','Betreiber – Adresse'],
+    ['standortAdresse','Anlagenstandort – Adresse'],
+    ['erstellerFirma','Anlagenerrichter – Firma'],
+    ['erstellerOrt','Anlagenerrichter – Ort'],
+    ['datum','Datum'],
+  ];
+  bd.innerHTML=`<div class="modal">
+    <h2>Projektdaten</h2>
+    ${fields.map(([k,label])=>
+      `<div class="field"><label>${label}</label><input data-k="${k}" value="${esc(p[k])}"></div>`
+    ).join('')}
+    <div class="actions"><button id="pf-close">Schließen</button></div>
+  </div>`;
+  document.body.appendChild(bd);
+  projectModalEl=bd;
+  const closeModal=()=>{bd.remove();projectModalEl=null;};
+  bd.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',()=>{
+    if(!inp._touched){pushHistory();inp._touched=true;}
+    state.project[inp.dataset.k]=inp.value;render();
+  }));
+  const dEl=bd.querySelector('input[data-k="datum"]');
+  if(!dEl.value){
+    pushHistory();
+    dEl.value=new Date().toISOString().slice(0,10);
+    state.project.datum=dEl.value;
+    render();
+  }
+  bd.addEventListener('pointerdown',e=>{if(e.target===bd)closeModal();});
+  bd.querySelector('#pf-close').onclick=closeModal;
+}
+el('project').onclick=openProjectModal;
+
 /* ---------------- export ---------------- */
 function serializeSVG(){
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
