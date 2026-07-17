@@ -360,7 +360,7 @@ function inspector(){
   }));
   el('delnode').onclick=()=>removeNode(n.id);
 }
-function selectItem(s){sel=s;render();inspector();}
+function selectItem(s){sel=s;arrowMoveStarted=false;render();inspector();}
 
 /* ---------------- context menu ---------------- */
 let ctxEl=null;
@@ -400,7 +400,7 @@ function dupNode(id){const n=state.nodes.find(x=>x.id===id);if(!n)return;pushHis
 document.addEventListener('pointerdown',e=>{if(ctxEl&&!ctxEl.contains(e.target))closeCtx();},true);
 
 /* ---------------- interaction ---------------- */
-let drag=null,wiring=null,panning=null,space=false,moved=false,addOffset=0,arrowMoveStarted=false;
+let drag=null,wiring=null,panning=null,space=false,moved=false,addOffset=0,arrowMoveStarted=false,arrowMoveTimer=null;
 
 SVG.addEventListener('pointerdown',e=>{
   closeCtx();
@@ -482,6 +482,8 @@ window.addEventListener('keydown',e=>{
     e.preventDefault();
     const n=state.nodes.find(x=>x.id===sel.id);if(!n)return;
     if(!arrowMoveStarted){pushHistory();arrowMoveStarted=true;}
+    clearTimeout(arrowMoveTimer);
+    arrowMoveTimer=setTimeout(()=>{arrowMoveStarted=false;},500);
     const step=12;
     if(e.key==='ArrowUp')n.y-=step;
     if(e.key==='ArrowDown')n.y+=step;
@@ -498,7 +500,6 @@ window.addEventListener('keydown',e=>{
 });
 window.addEventListener('keyup',e=>{
   if(e.code==='Space'){space=false;SVG.classList.remove('panready');}
-  if(e.key.startsWith('Arrow'))arrowMoveStarted=false;
 });
 
 /* drop from palette */
