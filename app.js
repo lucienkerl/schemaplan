@@ -89,6 +89,27 @@ function updateUndo(){el('undo').disabled=!history.length;el('redo').disabled=!f
 el('undo').onclick=undo;
 el('redo').onclick=redo;
 
+/* ---------------- autosave ---------------- */
+const AUTOSAVE_KEY='schemaplan.autosave.v1';
+let autosaveT;
+function scheduleAutosave(){
+  clearTimeout(autosaveT);
+  autosaveT=setTimeout(()=>{
+    try{localStorage.setItem(AUTOSAVE_KEY,JSON.stringify(state));}catch(_){}
+  },500);
+}
+function loadAutosave(){
+  let raw;
+  try{raw=localStorage.getItem(AUTOSAVE_KEY);}catch(_){return false;}
+  if(!raw)return false;
+  try{
+    const o=JSON.parse(raw);
+    if(!o||!Array.isArray(o.nodes)||!Array.isArray(o.wires)||typeof o.seq!=='number')return false;
+    state=o;
+    return true;
+  }catch(_){return false;}
+}
+
 /* ---------------- toast ---------------- */
 let toastT;
 function showToast(msg){toast.textContent=msg;toast.classList.add('show');clearTimeout(toastT);
@@ -169,6 +190,7 @@ function portUsed(nodeId,portId){return state.wires.some(w=>(w.from.node===nodeI
 function mk(tag,attrs){const e=document.createElementNS(SVGNS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
 
 function render(){
+  scheduleAutosave();
   // wires first (under nodes)
   renderWires();
   // nodes
