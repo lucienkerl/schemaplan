@@ -296,7 +296,7 @@ function render(){
       stroke:c.color,'stroke-width':strokeW}));
 
     // schematic symbol: a proper SYMS drawing filling the box, or an ICONS fallback
-    const sym=mk('g',{class:'node-sym',stroke:c.color,fill:'none','stroke-width':1.5,
+    const sym=mk('g',{class:'node-sym',stroke:c.color,color:c.color,fill:'none','stroke-width':1.5,
       'stroke-linecap':'round','stroke-linejoin':'round'});
     sym.style.pointerEvents='none';
     if(SYMS[n.key]){
@@ -703,9 +703,26 @@ function serializeSVG(){
   const clone=VP.cloneNode(true);
   const tw=clone.querySelector('#tempwire');if(tw)clone.removeChild(tw);
   clone.querySelectorAll('.wirehit,.port').forEach(e=>e.remove());
-  // hollow (unused) port dots are dark on the dark canvas → make them white here
-  clone.querySelectorAll('circle').forEach(c=>{if(c.getAttribute('fill')==='#0d1017')c.setAttribute('fill','#ffffff');});
   clone.setAttribute('transform',`translate(${diagX-x0},${diagY-y0})`);
+
+  // reference-style export colours: mostly black, colour only for inverters/PV/battery
+  const INK='#1f2937';
+  const expCol=(key)=>key==='pvwr'?'#2563eb':key==='pvgen'?'#16a34a'
+    :(key==='battery'||key==='battwr'||key==='multi')?'#dc2626':INK;
+  clone.querySelectorAll('#nodes g.node').forEach(g=>{
+    const n=state.nodes.find(x=>x.id===g.dataset.id);if(!n)return;
+    const col=expCol(n.key);
+    g.querySelectorAll('.node-body').forEach(e=>e.setAttribute('stroke',col));
+    g.querySelectorAll('.node-sym').forEach(e=>{e.setAttribute('stroke',col);e.setAttribute('color',col);});
+  });
+  // wires + junction dots → near-black; hollow (unused) port dots → white
+  clone.querySelectorAll('#wires path').forEach(p=>{const s=p.getAttribute('stroke');if(s&&s!=='transparent')p.setAttribute('stroke',INK);});
+  clone.querySelectorAll('circle').forEach(c=>{
+    const f=c.getAttribute('fill');
+    if(c.getAttribute('stroke'))c.setAttribute('stroke',INK);
+    if(f==='#0d1017')c.setAttribute('fill','#ffffff');       // unused port: hollow
+    else if(f&&f!=='none'&&f!=='#ffffff')c.setAttribute('fill',INK); // used port: filled dot
+  });
 
   const css=document.querySelector('style').textContent;
   // light-theme overrides (win over the embedded dark stylesheet + node-body fill attr)
